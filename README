@@ -1,0 +1,116 @@
+Overview
+========
+
+This is a collection of three utility programs for performing useful
+functions on contig sequence files (and their related qual files).
+clip allows sequence and quality to be trimmed by a number of different
+parameters; mask_repeats will mask sequence based on the frequency of
+n-mer counts in the contig; histogram will give the occurrence rate
+of different n-mers in a contig (usually used to find proper cutoffs
+for mask_repeats).
+
+Some Useful Terms
+=================
+
+High Quality
+------------
+
+When talking about individual base pairs, one is considered high quality
+if it has a phred score of 20 or higher.  When talking about groups of
+up to 20 base pairs, they are considered high quality if their total
+phred score is 400 or more.
+
+Low quality tails are found by looking for the first and last group of
+high quality base pairs - anything before the beginning of the first
+group, or after the end of the last group, is a low quality tail.
+
+Vector Clipping
+---------------
+
+Clipping of vector is done by finding the longest contiguous sequence
+of non-X base pairs in the read.  All base pairs before and after that
+sequence are clipped.  (Thus, the resulting sequence will have no X base
+pairs, unless they are subsequently introduced by masking.)
+
+When both quality and vector clipping are asked for, vector clipping
+is performed first, and the remaining sequence then has the low quality
+tails clipped.
+
+Program usage details
+=====================
+
+clip
+----
+
+This is used to remove sections of sequence that are not of interest,
+either for poor quality, or for being part of vector, or for being of
+insufficient length.  Depending on what options are given, this will
+first look for the largest contiguous sequence of non-X base pairs
+(trimming vector), then clip low quality tails, then possibly clip the
+entire read if the remainder has insufficient base pairs left, either
+total or of high quality.
+
+The reads (or quality, if you're printing quality) are written out in
+the same order as they were found in the quality file (sequence that
+does not have a matching quality will be ignored).
+
+Instead of clipping low quality tails, it's possible to append the base
+pair range (of the printed base pairs, which may be different than the
+original base pairs if, for example, you clipped vector) of the high
+quality region to the line with the read name.
+
+histogram
+---------
+
+This can be used one of two ways - either to find a frequency count of
+n-mer occurrence rates (that is, how many n-mers have a given repeat
+count), or to list n-mers with the number of times each appeared.  N can
+be set from 1 to 32, so this can be used to find the total number of
+single bases, or two base pairs, as well as searching for long repeats.
+
+Both forward and comped sequence is used for generating n-mers counts;
+however, palindromic n-mers are only counted in one direction, since
+the idea is to look for n-mers that occur in more than one place.
+
+mask_repeats
+------------
+
+This is used to mask repetitive sections of sequence.  It first generates
+a frequency count of n-mers (in exactly the same way as histogram does).
+It then goes back through the sequence and, for each base pair, checks
+to see how many n-mers of which it's part exceed the given threshold;
+if a sufficient number do, then the base pair is replaced with an X.
+mask_repeats prints out the modified sequence file, which is identical
+to the original sequence file except for the masked base pairs.
+
+To prevent masking of highly repetitive regions that are anchored by high
+quality non-highly repetitive regions, you can specify a minimum number
+of high quality bases that must be present on both sides of the region
+(although they don't have to be directly touching it - it's possible for
+anchors near the beginning and end of a read to anchor the entire read).
+
+Programming Notes
+=================
+
+Compiling / Porting
+-------------------
+
+This was originally compiled on a SunOS 8 machine, using gcc 4.0.1,
+gmake 3.80, and gnu-ld 2.16.  It can be compiled in either 32 or 64
+bit mode; 64 bit should allow access to more memory (if your hardware
+supports more than 4 GB or memory).  It is hopefully possible to easily
+port the code to other platforms (include files will be the most likely
+source of problems).  It is not backward compatible with versions of
+gcc before 3.0, although it probably won't take too much work to fix up
+(std::string::compare() takes arguments in a different order, among
+other things).
+
+Hacking the Code
+----------------
+
+As you might notice, there are several other programs here as well
+(library_stats, qc_stats1, qc_stats2, qc_stats3).  These have been made
+by taking the core functions and classes of the three base programs,
+and modifying them to add slightly more information or different
+functionality.  The purpose of their inclusion is as examples for making
+your own modifications.
