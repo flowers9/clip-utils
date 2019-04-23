@@ -168,7 +168,7 @@ void close_fork(const int fd) {
 	local.close_process(fd);
 }
 
-// wait for all remiaining writes to finish
+// wait for all remaining writes to finish
 
 void close_fork_wait(const int fd) {
 	local.close_process_wait(fd);

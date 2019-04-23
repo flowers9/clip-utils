@@ -15,7 +15,7 @@ static std::string opt_output_file;
 
 static void print_usage(void) {
 	std::cerr <<
-		"usage: add_passes [-o output] <ccs_bam_file> <fasta1>\n" <<
+		"usage: add_passes [-o output] <ccs_bam_file> <fasta/fastq>\n" <<
 		"    -o ## file to store output in [stdout]\n";
 	exit(0);
 }
@@ -37,7 +37,7 @@ static void get_passes(const std::string ccs_bam, std::map<std::string, int> &re
 }
 
 static void add_pass(std::string &line, const std::map<std::string, int> &read_passes) {
-	size_t i(line.find('/'));
+	size_t i(line.find('/', 1));
 	if (i == std::string::npos) {
 		std::cerr << "Warning: non-pacbio read name1: " << line << "\n";
 		return;
@@ -50,17 +50,24 @@ static void add_pass(std::string &line, const std::map<std::string, int> &read_p
 	const std::map<std::string, int>::const_iterator a(read_passes.find(line.substr(1, i - 1)));
 	if (a == read_passes.end()) {
 		std::cerr << "Warning: read not found: " << line << "\n";
+		return;
 	}
-	line += ";passes=";
+	if (line.find(' ', 1) == std::string::npos) {
+		// got a raw read name, so add space
+		line += " passes=";
+	} else {	// otherwise, tack onto comments
+		line += ";passes=";
+	}
 	std::ostringstream x;
 	x << a->second;
 	line += x.str();
 }
 
-static void process_fasta(const std::string pbtranscript_fasta, const std::map<std::string, int> &read_passes) {
-	int fd_in(open_compressed(pbtranscript_fasta));
+// handles fasta & fastq files
+static void process_fastx(const std::string fastx, const std::map<std::string, int> &read_passes) {
+	int fd_in(open_compressed(fastx));
 	if (fd_in == -1) {
-		std::cerr << "Error: open: " << pbtranscript_fasta << "\n";
+		std::cerr << "Error: open: " << fastx << "\n";
 		exit(1);
 	}
 	std::list<std::string> fork_args(1, "gzip");
@@ -72,8 +79,22 @@ static void process_fasta(const std::string pbtranscript_fasta, const std::map<s
 	}
 	std::string line;
 	while (pfgets(fd_in, line) != -1) {
-		if (line.length() > 0 && line[0] == '>') {
+		if (line.length() > 0 && (line[0] == '>' || line[0] == '@')) {
 			add_pass(line, read_passes);
+			if (line[0] == '@') {	// fastq - have to skip past quality scores
+				// 0 - print header, get seq
+				// 1 - print seq, get quality header
+				// 2 - print quality header, get quality
+				for (int i(0); i != 3; ++i) {
+					line += "\n";
+					pfputs(fd_out, line);
+					if (pfgets(fd_in, line) == -1) {
+						std::cerr << "Error: reached eof while on pass " << i << " of fastq entry\n";
+						close_compressed(fd_in);
+						exit(1);
+					}
+				}
+			}
 		}
 		line += "\n";
 		pfputs(fd_out, line);
@@ -105,6 +126,6 @@ int main(int argc, char **argv) {
 	get_opts(argc, argv);
 	std::map<std::string, int> read_passes;
 	get_passes(argv[optind], read_passes);
-	process_fasta(argv[optind + 1], read_passes);
+	process_fastx(argv[optind + 1], read_passes);
 	return 0;
 }

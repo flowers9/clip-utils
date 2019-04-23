@@ -27,7 +27,7 @@ obj/%.o: %.cc
 
 .PHONY: all
 
-all: bin/clip bin/histogram_hash bin/library_stats bin/mask_repeats_hash bin/qc_stats1 bin/qc_stats2 bin/targets bin/read_stats bin/read_histogram bin/phred_hist bin/parse_output bin/repair_sequence2 bin/compress_blat bin/mask_repeats_hashz bin/histogram_hashz bin/repair_sequence3 bin/mask_repeats_hashn bin/histogram_hashn bin/check_barcodes bin/screen_blat bin/filter_blat bin/parse_output2 bin/screen_pairs bin/arachne_create_xml bin/extract_seq_and_qual bin/split_fasta bin/copy_dbs bin/print_hash bin/print_hashn bin/screen_reads bin/pacbio_read_stats bin/sort_blast bin/add_passes bin/find_kmers
+all: bin/clip bin/histogram_hash bin/library_stats bin/mask_repeats_hash bin/qc_stats1 bin/qc_stats2 bin/targets bin/read_stats bin/read_histogram bin/phred_hist bin/parse_output bin/repair_sequence2 bin/compress_blat bin/mask_repeats_hashz bin/histogram_hashz bin/repair_sequence3 bin/mask_repeats_hashn bin/histogram_hashn bin/check_barcodes bin/screen_blat bin/filter_blat bin/parse_output2 bin/screen_pairs bin/arachne_create_xml bin/extract_seq_and_qual bin/split_fasta bin/copy_dbs bin/print_hash bin/print_hashn bin/screen_reads bin/pacbio_read_stats bin/sort_blast bin/add_passes bin/find_kmers bin/add_quality
 
 bin/screen_reads: obj/screen_reads.o obj/open_compressed.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
@@ -135,6 +135,14 @@ obj/add_passes.o: add_passes.cc
 	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -o $@ $<
 bin/add_passes: obj/add_passes.o obj/open_compressed.o obj/write_fork.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) -L./lib -Wl,-R/home/raid2/LINUXOPT/htslib-1.7.1/lib -lpbbam -lhts
+
+depend/add_quality.d: add_quality.cc
+	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
+obj/add_quality.o: add_quality.cc
+	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -o $@ $<
+bin/add_quality: obj/add_quality.o obj/open_compressed.o obj/write_fork.o
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) -L./lib -Wl,-R/home/raid2/LINUXOPT/htslib-1.7.1/lib -lpbbam -lhts
+
 depend/find_kmers.d: find_kmers.cc
 	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
 obj/find_kmers.o: find_kmers.cc
