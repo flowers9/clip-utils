@@ -77,10 +77,10 @@ bool add_sequence_mers(std::list<Read>::const_iterator a, const std::list<Read>:
 			start_time();
 			fprintf(stderr, "%lu : %10lu entries used (%5.2f%%), %lu overflow\n", time(NULL), mer_list.size(), static_cast<double>(100) * mer_list.size() / mer_list.capacity(), mer_list.overflow_size());
 		}
-		if ((!opt_include.empty() && !opt_include.is_match(a->name())) || opt_exclude.find(a->name()) != opt_exclude.end()) {
+		if (a->size() < opt_skip_size) {
 			continue;
 		}
-		if (a->size() < opt_skip_size) {
+		if ((!opt_include.empty() && !opt_include.is_match(a->name())) || opt_exclude.find(a->name()) != opt_exclude.end()) {
 			continue;
 		}
 		hash::key_type key(0);
@@ -152,15 +152,9 @@ bool add_sequence_mers(std::list<Read>::const_iterator a, std::list<Read>::const
 
 std::string convert_key(hash::key_type key) {
 	const char values[4] = { 'A', 'C', 'G', 'T' };
-	std::string sequence;
+	std::string sequence(opt_mer_length + 1, '\0');
 	for (size_t i(0); i <= opt_mer_length; ++i, key >>= 2) {
-		sequence += values[key & 3];
-	}
-	// now reverse sequence (in place), to put it in proper order
-	std::string::iterator a(sequence.begin());
-	std::string::iterator b(sequence.end());
-	for (--b; a < b; ++a, --b) {
-		std::swap(*a, *b);
+		sequence[opt_mer_length - i] = values[key & 3];
 	}
 	return sequence;
 }
@@ -207,14 +201,14 @@ void count_kmers(const Read &a, const hash &mer_list, size_t &kmers, size_t &r_k
 	if (!opt_include.empty() && !opt_include.is_match(a.name())) {
 		return;
 	}
-	hash::key_type key = 0;
-	hash::key_type comp_key = 0;
-	std::map<hash::key_type, bool> r_kmers_list; // list of repetitive kmers
-	size_t end = a.quality_stop;
+	hash::key_type key(0);
+	hash::key_type comp_key(0);
+	std::map<hash::key_type, char> r_kmers_list; // list of repetitive kmers
+	size_t end(a.quality_stop);
 	// set key with first n-mer - 1 bases
-	size_t s = preload_keys(a, a.quality_start, end, key, comp_key);
+	size_t s(preload_keys(a, a.quality_start, end, key, comp_key));
 	for (; s < end; ++s) {
-		int i = a.get_seq(s);
+		const int i(a.get_seq(s));
 		if (i == -1) {
 			s = preload_keys(a, s, end, key, comp_key);
 			--s;
@@ -224,10 +218,10 @@ void count_kmers(const Read &a, const hash &mer_list, size_t &kmers, size_t &r_k
 		comp_key = (comp_key >> 2) | bp_comp[i];
 		++kmers;
 		// is this repetitive enough to count as a repeat?
-		hash::value_type x = mer_list.value(key < comp_key ? key : comp_key);
+		const hash::value_type x(mer_list.value(key < comp_key ? key : comp_key));
 		if (opt_repeat_threshold <= x && x < opt_repeat_threshold_upper) {
 			++r_kmers;
-			r_kmers_list[key < comp_key ? key : comp_key] = 1;
+			r_kmers_list[key < comp_key ? key : comp_key] = 0;
 		}
 	}
 	ur_kmers = r_kmers_list.size();

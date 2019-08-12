@@ -121,8 +121,8 @@ int read_sequence(const char *filename, std::list<Read> &read_list, bool opt_war
 		set_default_quals(read_list, opt_quality_cutoff);
 		return 1;
 	}
-	Read duplicate_read;
-	Read *duplicate_read_ptr = &duplicate_read;
+	static Read duplicate_read;
+	Read * const duplicate_read_ptr = &duplicate_read;
 	Read *current_read = NULL;
 	while (pfgets(fd, line) != -1) {
 		if (line[0] == '>') {

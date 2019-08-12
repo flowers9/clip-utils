@@ -554,7 +554,7 @@ int main(int argc, char **argv) {
 		// have to add one to opt_mer_length,
 		// as init_mer_constants() subtracts one
 		mer_list.set_max_key_size((opt_mer_length + 1) * 2);
-		mer_list.set_no_space_response((opt_hash_clean ? hash::CLEAN_HASH: 0) | (opt_tmp_file_prefix.empty() ? 0 : hash::TMP_FILE), opt_tmp_file_prefix);
+		mer_list.set_no_space_response((opt_hash_clean ? hash::CLEAN_HASH : 0) | (opt_tmp_file_prefix.empty() ? 0 : hash::TMP_FILE), opt_tmp_file_prefix);
 	}
 	if (opt_frequency_max != 0 && opt_frequency_max < hash::max_small_value) {
 		mer_list.set_overflow(0);

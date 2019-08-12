@@ -32,7 +32,7 @@ class ReadFile {
 	std::map<std::string, Read *> read_lookup;
 	std::list<Read> tmp_read_list;
 	std::map<std::string, std::string> spare_quals;
-	Read duplicate_read;
+	Read duplicate_read;	// just needs to be an unused memory location
 	Read * const duplicate_read_ptr;
     public:
 	std::list<Read> read_list;

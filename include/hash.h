@@ -9,7 +9,7 @@
 // The alt_list/alt_map arrays are available for storing extra information
 // associated with each element in an efficient manner.
 
-#include <limits.h>	// UCHAR_MAX, UINT64_MAX, ULONG_MAX
+#include <limits.h>	// UCHAR_MAX, ULONG_MAX
 #include <list>		// list<>
 #include <map>		// map<>
 #include <stdint.h>	// uint64_t
@@ -34,8 +34,8 @@ class hash {
     public:	// type declarations
 	typedef uint64_t key_type;
 	typedef unsigned char small_value_type;
-	typedef unsigned long value_type;
-	typedef unsigned long offset_type;
+	typedef size_t value_type;
+	typedef size_t offset_type;
 	enum { max_small_value = UCHAR_MAX };
 	enum no_space_response_t { CLEAN_HASH = 1, TMP_FILE = 2 };
 
@@ -74,7 +74,7 @@ class hash {
 	};
 
     private:
-	bool can_overflow;	// allow values greater than max_small_value
+	bool can_overflow;		// allow values greater than max_small_value
 	int no_space_response;
 	int max_key_size;		// for radix sorting
 	offset_type used_elements;

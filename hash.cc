@@ -166,8 +166,7 @@ hash::offset_type hash::find_empty_offset(key_type key) const {
 
 void hash::rehash() {
 	// first pass, fill all non-collision slots
-	offset_type i(0);
-	for (; i != modulus; ++i) {
+	for (offset_type i(0); i != modulus; ++i) {
 		if (key_list[i] != INVALID_KEY) {
 			const offset_type j(key_list[i] % modulus);
 			// swap if non-collision slot has a collision fill
@@ -184,7 +183,7 @@ void hash::rehash() {
 	bool changed;
 	do {
 		changed = 0;
-		for (i = 0; i != modulus; ++i) {
+		for (offset_type i(0); i != modulus; ++i) {
 			if (key_list[i] != INVALID_KEY) {
 				const offset_type j(find_empty_offset(key_list[i]));
 				if (j != modulus) {
