@@ -76,6 +76,9 @@ class Read {
 	bool print_header(FILE *fp, size_t, size_t) const;
 	void clip_linker(void);
     public:
+	const std::string &sequence() const {
+		return sequence_;
+	}
 	size_t size(void) const {
 		return sequence_.size();
 	}
