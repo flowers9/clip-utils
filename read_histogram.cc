@@ -263,7 +263,7 @@ int main(int argc, char **argv) {
 		if (opt_feedback) {
 			fprintf(stderr, "Adding n-mers\n");
 		}
-		if (!add_sequence_mers(read_list.begin(), read_list.end(), mer_list)) {
+		if (!add_sequence_mers(read_list.begin(), read_list.end(), mer_list, 0)) {
 			fprintf(stderr, "Error: n-mer list incomplete - give a larger -z value\n");
 		}
 		if (!opt_aggregate) {

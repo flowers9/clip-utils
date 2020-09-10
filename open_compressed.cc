@@ -13,6 +13,8 @@
 #include <sys/wait.h>	// WNOHANG, waitpid()
 #include <unistd.h>	// _SC_OPEN_MAX, _exit(), close(), dup2(), execlp(), fork(), pipe(), read(), sysconf()
 
+// XXX - consider switching to popen instead of fork/exec
+
 #define BUFSIZE 32768
 
 class OpenCompressedLocalData {

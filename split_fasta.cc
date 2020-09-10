@@ -76,7 +76,7 @@ static void get_opts(int argc, char **argv, std::list<std::string> &input_files,
 	std::string output_suffix;
 	int c;
 	while ((c = getopt(argc, argv, "i:l:o:t")) != EOF) {
-		switch(c) {
+		switch (c) {
 		    case 'l':	// deprecated; on loan from extract_seq_and_qual
 		    case 'i':
 			{

@@ -10,7 +10,9 @@
 #include <string>	// string
 #include <sys/types.h>	// mode_t, pid_t, size_t, ssize_t
 #include <sys/wait.h>	// WNOHANG, waitpid()
-#include <unistd.h>	// _SC_OPEN_MAX, _exit(), close(), dup2(), execvp(), fork(), pipe(), sysconf, write()
+#include <unistd.h>	// _SC_OPEN_MAX, _exit(), STDOUT_FILENO, close(), dup2(), execvp(), fork(), pipe(), sysconf, write()
+
+// XXX - consider switching to popen instead of fork/exec
 
 class WriteForkLocalData {
     private:
@@ -89,7 +91,7 @@ int write_fork(const std::list<std::string> &args, const std::string &filename, 
 	int fd(-1);
 	if (args.empty()) {			// direct write, no pipe
 		if (filename.empty() || filename == "-") { // it's just stdout
-			return 1;
+			return STDOUT_FILENO;
 		}
 		fd = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, mode);
 		if (fd == -1) {
@@ -174,6 +176,16 @@ void close_fork_wait(const int fd) {
 	local.close_process_wait(fd);
 }
 
+// write one character to a file descriptor; return -1 on error, 1 on success
+ssize_t pfputc(const int fd, const char c) {
+	assert(-1 < fd && fd < local.open_max);
+	if (write(fd, &c, 1) == -1) {
+		std::cerr << "Error: write(" << fd << ' ' << c << "): " << strerror(errno) << '\n';
+		return -1;
+	}
+	return 1;
+}
+
 // write output to a file descriptor; returns -1 on error, otherwise
 // number of characters written
 
@@ -184,7 +196,7 @@ ssize_t pfputs(const int fd, const std::string &line) {
 	while (left_to_write != 0) {
 		const ssize_t written(write(fd, buf, left_to_write));
 		if (written == -1) {
-			std::cerr << "Error: write (" << fd << ' ' << line << "): " << strerror(errno) << '\n';
+			std::cerr << "Error: write(" << fd << ' ' << line << "): " << strerror(errno) << '\n';
 			return -1;
 		}
 		left_to_write -= written;

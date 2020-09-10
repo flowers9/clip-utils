@@ -69,7 +69,7 @@ static int get_opts(int argc, char **argv, std::list<std::string> &blat_files) {
 	std::istringstream x;
 	int c;
 	while ((c = getopt(argc, argv, "C:I:i:L:l:m:O:")) != -1) {
-		switch(c) {
+		switch (c) {
 		    case 'C':
 			x.str(optarg);
 			x >> opt_trim_match;

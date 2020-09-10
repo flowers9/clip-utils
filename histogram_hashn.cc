@@ -1,5 +1,5 @@
 #include "hashn.h"	// hashn
-#include "hist_lib_hashn.h"	// add_sequence_mers(), convert_key(), init_mer_constants(), opt_feedback, opt_include, opt_skip_size, reverse_key()
+#include "hist_lib_hashn.h"	// add_sequence_mers(), clear_mer_list(), convert_key(), init_mer_constants(), opt_feedback, opt_include, opt_skip_size, print_final_input_feedback(), reverse_key()
 #include "open_compressed.h"	// close_compressed(), get_suffix(), open_compressed(), pfgets()
 #include "read.h"	// Read, opt_clip_quality, opt_clip_vector, opt_quality_cutoff
 #include "read_file.h"	// ReadFile, opt_strip_tracename
@@ -374,6 +374,7 @@ static void get_opts(int argc, char **argv) {
 			break;
 		    case 's':
 			opt_save_file = optarg;
+			opt_aggregate = 1;		// won't work without this
 			break;
 		    case 'S':
 			opt_histogram_restore = open_compressed(optarg);
@@ -478,14 +479,16 @@ int main(int argc, char **argv) {
 				++err;
 				continue;
 			}
+			size_t total_reads(0);
 			while (file.read_batch(opt_warnings) != -1) {
 				if (opt_readnames_exclude) {
-					if (!add_sequence_mers(file.read_list.begin(), file.read_list.end(), mer_list, opt_readnames)) {
+					if (!add_sequence_mers(file.read_list.begin(), file.read_list.end(), mer_list, opt_readnames, total_reads)) {
 						fprintf(stderr, "Error: n-mer list incomplete - give a larger -z value\n");
 					}
-				} else if (!add_sequence_mers(file.read_list.begin(), file.read_list.end(), mer_list)) {
+				} else if (!add_sequence_mers(file.read_list.begin(), file.read_list.end(), mer_list, total_reads)) {
 					fprintf(stderr, "Error: n-mer list incomplete - give a larger -z value\n");
 				}
+				total_reads += file.read_list.size();
 			}
 			if (!opt_aggregate) {
 				if (opt_feedback) {
@@ -509,12 +512,13 @@ int main(int argc, char **argv) {
 				if (optind + 1 != argc) {
 					fprintf(fp_out, "\n");
 				}
-				mer_list.clear();
+				clear_mer_list(mer_list);
 			}
 		}
 	}
 	if (opt_aggregate) {
 		if (opt_feedback) {
+			print_final_input_feedback(mer_list);
 			fprintf(stderr, "Printing histogram\n");
 		}
 		if (opt_readnames_exclude > 0) {

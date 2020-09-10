@@ -15,7 +15,7 @@ bool opt_feedback(1);
 bool opt_mask_lowercase(0);
 bool opt_reverse_mask(0);
 hashn::value_type opt_repeat_threshold(20);
-hashn::value_type opt_repeat_threshold_upper(static_cast<hashn::value_type>(-1));
+hashn::value_type opt_repeat_threshold_upper(-1);
 int opt_phred20_anchor(-1);
 int opt_repeat_coverage(1);
 size_t opt_skip_size(0);
@@ -30,7 +30,7 @@ static unsigned long mer_length;		// mer_length - 1
 // position in the sequence (or end, if there aren't at least mer length
 // proper base pairs); assumes key and comp_key are already initialized
 
-static size_t preload_keys(const Read &a, size_t s, size_t end, hashn::key_type &key, hashn::key_type &comp_key) {
+static size_t preload_keys(const Read &a, size_t s, const size_t end, hashn::key_type &key, hashn::key_type &comp_key) {
 	a.next_good_sequence(s);
 	if (s == a.size()) {	// no good characters left
 		return end;
@@ -65,18 +65,14 @@ static size_t preload_keys(const Read &a, size_t s, size_t end, hashn::key_type 
 // find n-mer's and count up how many of each there are, looking at both
 // forward and comped versions of the sequence
 
-bool add_sequence_mers(std::list<Read>::const_iterator a, std::list<Read>::const_iterator end_a, hashn &mer_list) {
-	if (opt_feedback) {
-		start_time();
-		fprintf(stderr, "%lu : %10lu entries used (%5.2f%%), %lu overflow\n", time(NULL), mer_list.size(), (double)100 * mer_list.size() / mer_list.capacity(), mer_list.overflow_size());
-	}
+bool add_sequence_mers(std::list<Read>::const_iterator a, std::list<Read>::const_iterator end_a, hashn &mer_list, size_t total_reads) {
 	hashn::key_type key(mer_list);
 	hashn::key_type comp_key(mer_list);
-	for (; a != end_a; ++a) {
+	for (; a != end_a; ++a, ++total_reads) {
 		// print feedback every 10 minutes
 		if (opt_feedback && elapsed_time() >= 600) {
 			start_time();
-			fprintf(stderr, "%lu : %10lu entries used (%5.2f%%), %lu overflow\n", time(NULL), mer_list.size(), (double)100 * mer_list.size() / mer_list.capacity(), mer_list.overflow_size());
+			fprintf(stderr, "%lu: %10lu entries used (%5.2f%%), %lu overflow (%lu reads)\n", time(NULL), mer_list.size(), double(100) * mer_list.size() / mer_list.capacity(), mer_list.overflow_size(), total_reads);
 		}
 		if ((!opt_include.empty() && !opt_include.is_match(a->name())) || opt_exclude.find(a->name()) != opt_exclude.end()) {
 			continue;
@@ -84,7 +80,7 @@ bool add_sequence_mers(std::list<Read>::const_iterator a, std::list<Read>::const
 		if (a->size() < opt_skip_size) {
 			continue;
 		}
-		size_t end = a->quality_stop;
+		const size_t end = a->quality_stop;
 		// set key with first n-mer - 1 bases
 		size_t s = preload_keys(*a, a->quality_start, end, key, comp_key);
 		for (; s != end; ++s) {
@@ -101,24 +97,17 @@ bool add_sequence_mers(std::list<Read>::const_iterator a, std::list<Read>::const
 			}
 		}
 	}
-	if (opt_feedback) {
-		fprintf(stderr, "%lu : %10lu entries used (%5.2f%%), %lu overflow\n", time(NULL), mer_list.size(), (double)100 * mer_list.size() / mer_list.capacity(), mer_list.overflow_size());
-	}
 	return 1;
 }
 
-bool add_sequence_mers(std::list<Read>::const_iterator a, std::list<Read>::const_iterator end_a, hashn &mer_list, const std::map<std::string, hashn::offset_type> &opt_readnames_exclude) {
-	if (opt_feedback) {
-		start_time();
-		fprintf(stderr, "%lu : %10lu entries used (%5.2f%%), %lu overflow\n", time(NULL), mer_list.size(), (double)100 * mer_list.size() / mer_list.capacity(), mer_list.overflow_size());
-	}
+bool add_sequence_mers(std::list<Read>::const_iterator a, std::list<Read>::const_iterator end_a, hashn &mer_list, const std::map<std::string, hashn::offset_type> &opt_readnames_exclude, size_t total_reads) {
 	hashn::key_type key(mer_list);
 	hashn::key_type comp_key(mer_list);
-	for (; a != end_a; ++a) {
+	for (; a != end_a; ++a, ++total_reads) {
 		// print feedback every 10 minutes
 		if (opt_feedback && elapsed_time() >= 600) {
 			start_time();
-			fprintf(stderr, "%lu : %10lu entries used (%5.2f%%), %lu overflow\n", time(NULL), mer_list.size(), (double)100 * mer_list.size() / mer_list.capacity(), mer_list.overflow_size());
+			fprintf(stderr, "%lu: %10lu entries used (%5.2f%%), %lu overflow (%lu reads)\n", time(NULL), mer_list.size(), (double)100 * mer_list.size() / mer_list.capacity(), mer_list.overflow_size(), total_reads);
 		}
 		if (!opt_include.empty() && !opt_include.is_match(a->name())) {
 			continue;
@@ -151,9 +140,6 @@ bool add_sequence_mers(std::list<Read>::const_iterator a, std::list<Read>::const
 			}
 		}
 	}
-	if (opt_feedback) {
-		fprintf(stderr, "%lu : %10lu entries used (%5.2f%%), %lu overflow\n", time(NULL), mer_list.size(), (double)100 * mer_list.size() / mer_list.capacity(), mer_list.overflow_size());
-	}
 	return 1;
 }
 
@@ -172,8 +158,24 @@ std::string convert_key(const hashn::key_type_base &key) {
 // initialize mer-related constants
 
 void init_mer_constants(const unsigned long opt_mer_length) {
+	// start it once, here, so multiple files and batches don't get
+	// extra feedbacks
+	if (opt_feedback) {
+		start_time();
+	}
 	mer_length = opt_mer_length - 1;
 	mer_bits = opt_mer_length * 2;
+}
+
+void print_final_input_feedback(const hashn &mer_list) {
+	if (opt_feedback && mer_list.size() != 0) {
+		fprintf(stderr, "%lu: %10lu entries used (%5.2f%%), %lu overflow\n", time(NULL), mer_list.size(), double(100) * mer_list.size() / mer_list.capacity(), mer_list.overflow_size());
+	}
+}
+
+void clear_mer_list(hashn &mer_list) {
+	print_final_input_feedback(mer_list);
+	mer_list.clear();
 }
 
 // count number of kmers, repetitive kmers, and unique repetitive kmers

@@ -186,7 +186,7 @@ static int get_opts(int argc, char **argv) {
 	opt_strip_trace = 0;
 	int c;
 	while ((c = getopt(argc, argv, "afhm:Rs:tV")) != EOF) {
-		switch(c) {
+		switch (c) {
 		    case 'a':
 			opt_all_read_segments = 1;
 			break;

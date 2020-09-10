@@ -11,6 +11,8 @@
 extern bool opt_strip_tracename;
 extern std::map<std::string, bool> opt_readname_match;
 
+#define DEFAULT_BATCH_SIZE 10000
+
 class ReadFile {
     private:
 	int find_qual(void);
@@ -37,21 +39,27 @@ class ReadFile {
     public:
 	std::list<Read> read_list;
 	std::string seq_file, qual_file;
-	ReadFile(void) : fd_seq(-1), fd_qual(-1), track_dups(1), fastq_file(0), batch_size(0), duplicate_read_ptr(&duplicate_read) { }
-	explicit ReadFile(const char * const s, const size_t b = 0, const bool t = 1) : fd_seq(-1), fd_qual(-1), track_dups(t ? 1 : 0), fastq_file(0), batch_size(b), duplicate_read_ptr(&duplicate_read), seq_file(s) {
+	ReadFile(void) : fd_seq(-1), fd_qual(-1), track_dups(1), fastq_file(0), batch_size(-1), duplicate_read_ptr(&duplicate_read) { }
+	explicit ReadFile(const char * const s, const size_t b = -1, const bool t = 1) : fd_seq(-1), fd_qual(-1), track_dups(t ? 1 : 0), fastq_file(0), batch_size(b), duplicate_read_ptr(&duplicate_read), seq_file(s) {
 		this->open();
 	}
-	explicit ReadFile(const std::string &s, const size_t b = 0, const bool t = 1) : fd_seq(-1), fd_qual(-1), track_dups(t ? 1 : 0), fastq_file(0), batch_size(b), duplicate_read_ptr(&duplicate_read), seq_file(s) {
+	explicit ReadFile(const std::string &s, const size_t b = -1, const bool t = 1) : fd_seq(-1), fd_qual(-1), track_dups(t ? 1 : 0), fastq_file(0), batch_size(b), duplicate_read_ptr(&duplicate_read), seq_file(s) {
 		this->open();
 	}
 	~ReadFile(void) {
 		this->close();
 	}
 	void open(void) {
-		switch(find_qual()) {	// sets fd_seq
+		switch (find_qual()) {	// sets fd_seq
 		    case 0:		// no qual file
 			if (!fastq_file) {
 				fprintf(stderr, "Warning: %s: qual file missing, defaulting qual's to %d\n", seq_file.c_str(), opt_quality_cutoff);
+			}
+			// for non-split seq/qual files (either fastq or
+			// fasta files without qual files), don't attempt
+			// to read it all in by default
+			if (batch_size == size_t(-1)) {
+				batch_size = DEFAULT_BATCH_SIZE;
 			}
 		    case -1:		// no qual or seq file
 			break;

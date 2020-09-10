@@ -9,6 +9,7 @@
 extern int write_fork(const std::list<std::string> &, const std::string &, mode_t = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 extern void close_fork(int);
 extern void close_fork_wait(int);
+extern ssize_t pfputc(int, char);
 extern ssize_t pfputs(int, const std::string &);
 extern ssize_t pfwrite(int, const void *, const size_t);
 

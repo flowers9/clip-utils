@@ -418,11 +418,13 @@ int main(int argc, char **argv) {
 			++err;
 			continue;
 		}
+		size_t total_reads(0);
 		while (file.read_batch(opt_warnings) != -1) {
-			if (!add_sequence_mers(file.read_list.begin(), file.read_list.end(), mer_list)) {
+			if (!add_sequence_mers(file.read_list.begin(), file.read_list.end(), mer_list, total_reads)) {
 				fprintf(stderr, "Error: n-mer list incomplete - specify a larger -z value\n");
 				return 1;
 			}
+			total_reads += file.read_list.size();
 		}
 	}
 	const int start = optind;
@@ -436,20 +438,22 @@ int main(int argc, char **argv) {
 				++err;
 				continue;
 			}
+			size_t total_reads(0);
 			while (file.read_batch(opt_warnings) != -1) {
 				if (opt_split) {
 					std::list<Read>::iterator c = file.read_list.begin();
 					const std::list<Read>::const_iterator end_c = file.read_list.end();
 					while (c != end_c) {
 						const std::list<Read>::iterator b = c++;
-						add_sequence_mers(b, c, mer_list);
+						add_sequence_mers(b, c, mer_list, total_reads);
 						print_unique_sequence(b, c, mer_list);
 						mer_list.clear();
 					}
-				} else if (!add_sequence_mers(file.read_list.begin(), file.read_list.end(), mer_list)) {
+				} else if (!add_sequence_mers(file.read_list.begin(), file.read_list.end(), mer_list, total_reads)) {
 					fprintf(stderr, "Error: n-mer list incomplete - give a larger -z value\n");
 					return 1;
 				}
+				total_reads += file.read_list.size();
 			}
 			if (!opt_aggregate && !opt_split) {
 				if (opt_feedback) {

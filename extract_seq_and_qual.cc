@@ -116,7 +116,7 @@ static int (* is_desired_read)(const std::string &line);
 static int opt_complement, opt_fastq_output, opt_qual_only, opt_regex;
 static int opt_read_list, opt_strip_leading_zero, opt_strip_trace;
 static int opt_strip_trailing_zero, opt_validate;
-static size_t opt_line_size;
+static size_t opt_line_size, opt_min_length, opt_max_length;
 static std::map<std::string, size_t> read_size;
 static std::map<std::string, std::list<ReadRange> > reads;
 static std::string opt_output_suffix;
@@ -525,6 +525,12 @@ void CurrentState::write_seq() {
 		read_size[get_header_seq()] = seq_.size();
 		return;
 	}
+	if (seq_.size() < opt_min_length) {
+		return;
+	}
+	if (opt_max_length && opt_max_length < seq_.size()) {
+		return;
+	}
 	if (opt_line_size != 0) {
 		seq_length_ = opt_line_size;
 	}
@@ -681,6 +687,12 @@ void CurrentState::write_qual() {
 		}
 		return;
 	}
+	if (qual_.size() < opt_min_length) {
+		return;
+	}
+	if (opt_max_length && opt_max_length < qual_.size()) {
+		return;
+	}
 	if (opt_line_size != 0) {
 		qual_length_ = opt_line_size;
 	}
@@ -749,6 +761,12 @@ void CurrentState::write_fastq() {
 		if (seq_.size() != q) {
 			std::cerr << get_header_qual() << ": size mismatch: " << seq_.size() << " != " << q << "\n";
 		}
+		return;
+	}
+	if (seq_.size() < opt_min_length) {
+		return;
+	}
+	if (opt_max_length && opt_max_length < seq_.size()) {
 		return;
 	}
 	if (opt_line_size != 0) {
@@ -1174,6 +1192,8 @@ static void print_usage() {
 		"\t-i ##\tlist of read names to include (if list contains a comma, it's\n" <<
 		"\t\tinterpreted as a comma separated list, otherwise it's treated\n" <<
 		"\t\tas a file name; may be specified multiple times)\n" <<
+		"\t-L ##\tminimum read length to include\n" <<
+		"\t-M ##\tmaximum read length to include\n" <<
 		"\t-o ##\tfile to write output to [fasta to stdout, unless -S specified]\n" <<
 		"\t-q\tprocess as qual file\n" <<
 		"\t-r\ttreat include/exclude read names as regex patterns\n" <<
@@ -1195,6 +1215,8 @@ static int get_opts(int argc, char **argv, std::list<std::pair<std::string, std:
 	opt_complement = 0;
 	opt_fastq_output = 0;
 	opt_line_size = 0;
+	opt_min_length = 0;
+	opt_max_length = 0;
 	opt_qual_only = 0;
 	opt_regex = 0;
 	opt_strip_leading_zero = 0;
@@ -1203,8 +1225,8 @@ static int get_opts(int argc, char **argv, std::list<std::pair<std::string, std:
 	opt_validate = 0;
 	std::list<std::pair<std::string, int> > read_list;
 	int c;
-	while ((c = getopt(argc, argv, "bchi:l:o:qrRs:S:tvVx:zZ")) != EOF) {
-		switch(c) {
+	while ((c = getopt(argc, argv, "bchi:l:L:M:o:qrRs:S:tvVx:zZ")) != EOF) {
+		switch (c) {
 		    case 'b':
 			opt_fastq_output = 1;
 			break;
@@ -1226,6 +1248,12 @@ static int get_opts(int argc, char **argv, std::list<std::pair<std::string, std:
 				}
 				globfree(&pglob);
 			}
+			break;
+		    case 'L':
+			std::istringstream(optarg) >> opt_min_length;
+			break;
+		    case 'M':
+			std::istringstream(optarg) >> opt_max_length;
 			break;
 		    case 'o':
 			outputs.assign(1, std::make_pair(optarg, ""));

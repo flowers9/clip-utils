@@ -31,6 +31,42 @@ std::map<std::string, std::string> read_name_translation;
 
 static bool *good_base = NULL;
 
+static char comp_lookup[256];
+
+void init_read_comp() {
+	for (int i(0); i != 256; ++i) {
+		comp_lookup[i] = i;
+	}
+	comp_lookup['A'] = 'T';
+	comp_lookup['C'] = 'G';
+	comp_lookup['G'] = 'C';
+	comp_lookup['T'] = 'A';
+	comp_lookup['a'] = 't';
+	comp_lookup['c'] = 'g';
+	comp_lookup['g'] = 'c';
+	comp_lookup['t'] = 'a';
+}
+
+// set read to be the reverse complement of the given read
+
+void Read::set_comp(const Read &a) {
+	quality.assign(a.quality.rbegin(), a.quality.rend());
+	const size_t length(a.sequence_.size());
+	// XXX - vectors
+	header = a.header;
+	quality_start = length - a.quality_stop;
+	quality_stop = length - a.quality_start;
+	vector_start = length - a.vector_stop;
+	vector_stop = length - a.vector_start;
+	phred_count = a.phred_count;
+	// I couldn't think up a better way to assign the space,
+	// and it does avoid having to do the reverse myself
+	sequence_.assign(a.sequence_.rbegin(), a.sequence_.rend());
+	for (size_t i(0); i != length; ++i) {
+		sequence_[i] = comp_lookup[static_cast<int>(sequence_[i])];
+	}
+}
+
 // find the largest continuous sequence of non-vector ('X') and set the
 // vector start and stop points for the read
 
@@ -227,8 +263,8 @@ void Read::set_quality_endpoints() {
 	size_t last(static_cast<size_t>(-1));
 	for (i = quality_stop - 1; i > quality_start; --i) {
 		++total_sequence;
-		if (last_bp != sequence[i]) {
-			last_bp = sequence[i];
+		if (last_bp != sequence_[i]) {
+			last_bp = sequence_[i];
 			runs += opt_repeat_clip;
 		}
 		if (total_sequence >= runs) {
@@ -242,8 +278,8 @@ void Read::set_quality_endpoints() {
 	size_t run(0);
 	const size_t max_run(size_t(floor(opt_repeat_clip)));
 	for (last_bp = 0; ; ++last) {
-		if (last_bp != sequence[last]) {
-			last_bp = sequence[last];
+		if (last_bp != sequence_[last]) {
+			last_bp = sequence_[last];
 			run = 1;
 		} else if (++run == max_run) {
 			break;
@@ -306,7 +342,7 @@ bool Read::find_strict_window(const std::pair<size_t, size_t> &x, int &best_scor
 		if (best_score < run_total && opt_base_cutoff != 0) {
 			std::vector<size_t> count(256, 0);
 			for (size_t j(start); j != stop; ++j) {
-				++count[sequence[j]];
+				++count[sequence_[j]];
 			}
 			const size_t cutoff(size_t(ceil((stop - start) * opt_base_cutoff)));
 			std::vector<size_t>::const_iterator b(count.begin());
@@ -351,15 +387,15 @@ void Read::set_strict_endpoints() {
 
 void Read::record_vectors() {
 	const char * const vector = opt_N_is_vector ? "NX" : "X";
-	std::string::size_type j(sequence.find_first_not_of(vector, 0));
+	std::string::size_type j(sequence_.find_first_not_of(vector, 0));
 	while (j != std::string::npos) {
-		const std::string::size_type i(sequence.find_first_of(vector, j + 1));
+		const std::string::size_type i(sequence_.find_first_of(vector, j + 1));
 		if (i == std::string::npos) {
 			vectors.push_back(std::make_pair(j, size()));
 			break;
 		}
 		vectors.push_back(std::make_pair(j, i));
-		j = sequence.find_first_not_of(vector, i + 1);
+		j = sequence_.find_first_not_of(vector, i + 1);
 	}
 }
 
@@ -369,7 +405,7 @@ void Read::count_phreds() {
 	init_phred_counting();
 	size_t i;
 	for (phred_count = 0, i = quality_start; i != quality_stop; ++i) {
-		if (quality[i] >= 20 && (opt_all_p20 || good_base[(int)sequence[i]])) {
+		if (quality[i] >= 20 && (opt_all_p20 || good_base[(int)sequence_[i]])) {
 			++phred_count;
 		}
 	}
@@ -383,12 +419,12 @@ void Read::consistency_check(bool opt_warnings) {
 			fprintf(stderr, "Warning: sequence with no quality: %s\n", name().c_str());
 		}
 		set_quality(opt_quality_cutoff);
-	} else if (sequence.size() != quality.size()) {
+	} else if (sequence_.size() != quality.size()) {
 		if (opt_warnings) {
-			fprintf(stderr, "Warning: sequence and quality of different lengths (%lu vs %lu): %s\n", sequence.size(), quality.size(), name().c_str());
+			fprintf(stderr, "Warning: sequence and quality of different lengths (%lu vs %lu): %s\n", sequence_.size(), quality.size(), name().c_str());
 		}
-		if (sequence.size() < quality.size()) {
-			quality.resize(sequence.size());
+		if (sequence_.size() < quality.size()) {
+			quality.resize(sequence_.size());
 		} else {
 			set_quality(opt_quality_cutoff);
 		}
@@ -405,11 +441,11 @@ void Read::print_sequence(FILE *fp) const {
 	if (opt_line_length) {
 		size_t next = i + opt_line_length;
 		for (; next < end; i = next, next += opt_line_length) {
-			fprintf(fp, "%s\n", sequence.substr(i, opt_line_length).c_str());
+			fprintf(fp, "%s\n", sequence_.substr(i, opt_line_length).c_str());
 		}
 	}
 	/* last bit might not be a full opt_line_length */
-	fprintf(fp, "%s\n", sequence.substr(i, end - i).c_str());
+	fprintf(fp, "%s\n", sequence_.substr(i, end - i).c_str());
 }
 
 /*
@@ -453,7 +489,7 @@ void Read::mask_by_phred(size_t cutoff) {
 	size_t i;
 	for (i = 0; i != size(); ++i) {
 		if (quality[i] < cutoff) {
-			sequence[i] = 'X';
+			sequence_[i] = 'X';
 		}
 	}
 }
@@ -465,7 +501,7 @@ Read Read::operator=(const Read &a) {
 	vector_start = a.vector_start;
 	vector_stop = a.vector_stop;
 	phred_count = a.phred_count;
-	sequence = a.sequence;
+	sequence_ = a.sequence_;
 	quality = a.quality;
 	vectors = a.vectors;
 	return *this;
@@ -478,17 +514,17 @@ Read Read::operator=(const Read *a) {
 	vector_start = a->vector_start;
 	vector_stop = a->vector_stop;
 	phred_count = a->phred_count;
-	sequence = a->sequence;
+	sequence_ = a->sequence_;
 	quality = a->quality;
 	vectors = a->vectors;
 	return *this;
 }
 
 void Read::clip_linker() {
-	if (opt_linker.is_match(sequence)) {
+	if (opt_linker.is_match(sequence_)) {
 		// trim linker off sequence, quality, and vector list
 		const size_t n(opt_linker[0].rm_so);
-		sequence.resize(n);
+		sequence_.resize(n);
 		quality.resize(n);
 		std::vector<std::pair<size_t, size_t> >::iterator a(vectors.begin());
 		const std::vector<std::pair<size_t, size_t> >::iterator end_a(vectors.end());
@@ -517,7 +553,7 @@ void Read::add_quality(const std::string &line, const bool opt_warnings) {
 		}
 		i = strtol(s = t, &t, 10);
 	}
-	if (opt_strip_trailing_zero_qual && quality.size() == sequence.size() + 1 && quality.back() == 0) {
+	if (opt_strip_trailing_zero_qual && quality.size() == sequence_.size() + 1 && quality.back() == 0) {
 		quality.pop_back();
 	}
 	consistency_check(opt_warnings);
@@ -549,7 +585,7 @@ void Read::add_quality_fastq(const std::string &line, const bool opt_warnings) {
 			quality.push_back(x);
 		}
 	}
-	if (opt_strip_trailing_zero_qual && quality.size() == sequence.size() + 1 && quality.back() == 0) {
+	if (opt_strip_trailing_zero_qual && quality.size() == sequence_.size() + 1 && quality.back() == 0) {
 		quality.pop_back();
 	}
 	consistency_check(opt_warnings);
@@ -588,7 +624,7 @@ void Read::set_quality(unsigned char x) {
 Read Read::subseq(size_t start, size_t stop) const {
 	Read a;
 	a.header = '>' + name() + '_' + itoa(start + 1) + ' ' + itoa(stop - start);
-	a.sequence = sequence.substr(start, stop - start);
+	a.sequence_ = sequence_.substr(start, stop - start);
 	a.quality.assign(quality.begin() + start, quality.begin() + stop);
 	if (vector_start < stop && start < vector_stop) {
 		a.vector_start = vector_start > start ? vector_start - start : 0;
@@ -625,7 +661,7 @@ size_t Read::count_quality(const std::pair<size_t, size_t> &a) const {
 			if (quality[i] >= opt_quality_cutoff) {
 				++n;
 			}
-			++count[sequence[i]];
+			++count[sequence_[i]];
 		}
 		const size_t cutoff(size_t(ceil((a.second - a.first) * opt_base_cutoff)));
 		std::vector<size_t>::const_iterator b(count.begin());
@@ -637,8 +673,8 @@ size_t Read::count_quality(const std::pair<size_t, size_t> &a) const {
 
 size_t Read::count_masked() const {
 	size_t i, n;
-	for (i = n = 0; i != sequence.size(); ++i) {
-		if (sequence[i] == 'X') {
+	for (i = n = 0; i != sequence_.size(); ++i) {
+		if (sequence_[i] == 'X') {
 			++n;
 		}
 	}

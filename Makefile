@@ -9,12 +9,12 @@ CXX     ?= g++
 DEBUG    = -O2 #-DCOMPRESS_READS
 # note that the uncompressed version of read.cc has diverged from the
 # compressed version (has a few extra bits in it)
-CPPFLAGS = -I./include $(DEBUG) -Wall -Wextra -Wpointer-arith -Wshadow \
+CPPFLAGS = $(extra_includes) -I./include $(DEBUG) -Wall -Wextra -Wpointer-arith -Wshadow \
 	-Wundef -Wcast-qual -Woverloaded-virtual -Wsign-promo -Wuninitialized \
 	-Wcast-align
 	#-Wconversion
 
-LDFLAGS  = $(DEBUG)
+LDFLAGS  = $(extra_libs) $(DEBUG)
 
 ifeq ($(OS), SunOS)
 DEBUG += -mcpu=v9 -m64
@@ -22,12 +22,26 @@ CPPFLAGS += -I/apps/include
 LDFLAGS += -R/apps/lib -R/apps/lib/sparcv9
 endif
 
+ifeq ($(OS), Linux)
+DEBUG += -O3 -pthread -mfpmath=sse -march=native -flto -fno-fat-lto-objects -fno-builtin -mmmx -msse -msse2 -mssse3 -msse4.1 -msse4.2 -mpopcnt -mfxsr
+CPPFLAGS += -std=c++11
+endif
+
 obj/%.o: %.cc
 	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) -o $@ $<
 
 .PHONY: all
 
-all: bin/clip bin/histogram_hash bin/library_stats bin/mask_repeats_hash bin/qc_stats1 bin/qc_stats2 bin/targets bin/read_stats bin/read_histogram bin/phred_hist bin/parse_output bin/repair_sequence2 bin/compress_blat bin/mask_repeats_hashz bin/histogram_hashz bin/repair_sequence3 bin/mask_repeats_hashn bin/histogram_hashn bin/check_barcodes bin/screen_blat bin/filter_blat bin/parse_output2 bin/screen_pairs bin/arachne_create_xml bin/extract_seq_and_qual bin/split_fasta bin/copy_dbs bin/print_hash bin/print_hashn bin/screen_reads bin/pacbio_read_stats bin/sort_blast bin/add_passes bin/find_kmers bin/add_quality
+all: bin/clip bin/histogram_hash bin/library_stats bin/mask_repeats_hash bin/qc_stats1 bin/qc_stats2 bin/targets bin/read_stats bin/read_histogram bin/phred_hist bin/parse_output bin/repair_sequence2 bin/compress_blat bin/mask_repeats_hashz bin/histogram_hashz bin/repair_sequence3 bin/mask_repeats_hashn bin/histogram_hashn bin/check_barcodes bin/screen_blat bin/filter_blat bin/parse_output2 bin/screen_pairs bin/arachne_create_xml bin/extract_seq_and_qual bin/split_fasta bin/copy_dbs bin/print_hash bin/print_hashn bin/screen_reads bin/pacbio_read_stats bin/sort_blast bin/add_passes bin/find_kmers bin/add_quality bin/interleave bin/tee bin/chris_prep bin/kmer_matching_setup bin/kmer_matching
+
+bin/chris_prep: obj/chris_prep.o obj/breakup_line.o obj/open_compressed.o obj/strtostr.o obj/write_fork.o
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+bin/tee: obj/tee.o obj/breakup_line.o obj/strtostr.o
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+bin/interleave: obj/interleave.o obj/open_compressed.o
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 bin/screen_reads: obj/screen_reads.o obj/open_compressed.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
@@ -58,6 +72,12 @@ bin/clip: obj/clip.o obj/breakup_line.o obj/get_name.o obj/open_compressed.o obj
 
 bin/histogram_hash: obj/open_compressed.o obj/get_name.o obj/hash.o obj/hist_lib_hash.o obj/histogram_hash.o obj/next_prime.o obj/pattern.o obj/read.o obj/read_file.o obj/strtostr.o obj/time_used.o obj/write_fork.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+bin/kmer_matching_setup: obj/kmer_matching_setup.o obj/get_name.o obj/hash.o obj/hash_read_hits.o obj/hist_lib_hash.o obj/kmer_lookup_info.o obj/next_prime.o obj/open_compressed.o obj/pattern.o obj/read.o obj/read_file.o obj/time_used.o obj/write_fork.o
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+bin/kmer_matching: obj/kmer_matching.o obj/breakup_line.o obj/hash_read_hits.o obj/hist_lib_hash.o obj/kmer_lookup_info.o obj/next_prime.o obj/open_compressed.o obj/pattern.o obj/read.o obj/read_file.o obj/strtostr.o obj/time_used.o
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) -lreadline
 
 bin/library_stats: obj/find_library.o obj/open_compressed.o obj/get_name.o obj/library_match.o obj/library_read_lib.o obj/library_stats.o obj/parse_read.o obj/pattern.o obj/pretty_print.o obj/read.o obj/read_lib.o obj/read_match.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
@@ -131,10 +151,12 @@ bin/histogram_hashz: obj/open_compressed.o obj/get_name.o obj/hashz.o obj/hist_l
 
 depend/add_passes.d: add_passes.cc
 	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
+obj/add_passes.o: extra_includes := -I/home/raid2/LINUXOPT/miniconda2a/include
 obj/add_passes.o: add_passes.cc
 	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -o $@ $<
+bin/add_passes: extra_libs := -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib
 bin/add_passes: obj/add_passes.o obj/open_compressed.o obj/write_fork.o
-	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) -L./lib -Wl,-R/home/raid2/LINUXOPT/htslib-1.7.1/lib -lpbbam -lhts
+	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -lpbbam -lhts
 
 depend/add_quality.d: add_quality.cc
 	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@

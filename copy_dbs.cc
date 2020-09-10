@@ -80,7 +80,7 @@ static int get_opts(const int argc, char * const argv[], std::list<std::string> 
 	opt_length_cutoff = 1;
 	int c;
 	while ((c = getopt(argc, argv, "d:hl:M:x:")) != EOF) {
-		switch(c) {
+		switch (c) {
 		    case 'd':
 			db_list.push_back(optarg);
 			if (db_list.back().empty()) {

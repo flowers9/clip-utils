@@ -163,6 +163,7 @@ class hash {
 		}
 	}
 	void set_no_space_response(int, const std::string & = "NONE");
+	bool set_value(key_type, value_type);
 };
 
 #endif // !_HASH_H

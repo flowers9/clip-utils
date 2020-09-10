@@ -309,8 +309,8 @@ hashn::offset_type hashn::insert_key(const offset_type i, base_type * const k, c
 		}
 	}
 	++used_elements;
-	key.copy_out(k);
-	value_list[i] = 0;
+	key.copy_out(k);	// copy key into table
+	value_list[i] = 0;	// init counts
 	offset_type j(i * alt_size);
 	const offset_type end_j(j + alt_size);
 	for (; j != end_j; ++j) {
@@ -325,9 +325,9 @@ hashn::offset_type hashn::insert_offset(const key_type &key) {
 	const base_type key_hash(key.hash());
 	offset_type i(key_hash % modulus);
 	base_type * const k(key_list + i * word_width);
-	if (invalid_key.equal(k)) {
+	if (invalid_key.equal(k)) {	// insert
 		return insert_key(i, k, key);
-	} else if (key.equal(k)) {
+	} else if (key.equal(k)) {	// already present
 		return i;
 	}
 	const offset_type j(collision_modulus - key_hash % collision_modulus);

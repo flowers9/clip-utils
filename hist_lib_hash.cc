@@ -1,10 +1,12 @@
 #include "hash.h"	// hash
 #include "hist_lib_hash.h"
+#include "kmer_lookup_info.h"	// KmerLookupInfo
 #include "pattern.h"	// Pattern
 #include "read.h"	// Read
 #include "time_used.h"	// elapsed_time(), start_time()
 #include <algorithm>	// swap()
 #include <ctype.h>	// lowercase()
+#include <itoa.h>	// itoa()
 #include <list>		// list<>
 #include <map>		// map<>
 #include <stdio.h>	// fprintf(), stderr
@@ -15,19 +17,31 @@
 size_t opt_mer_length;	// this is actually mer length - 1,
 			// for convenience of calculations below
 Pattern opt_include;
-bool opt_feedback = 1;
-bool opt_mask_lowercase = 0;
-bool opt_reverse_mask = 0;
-hash::value_type opt_repeat_threshold = 20;
-hash::value_type opt_repeat_threshold_upper = static_cast<hash::value_type>(-1);
-int opt_phred20_anchor = -1;
-size_t opt_repeat_coverage = 1;
-size_t opt_skip_size = 0;
+bool opt_feedback(1);
+bool opt_mask_lowercase(0);
+bool opt_reverse_mask(0);
+hash::value_type opt_repeat_threshold(20);
+hash::value_type opt_repeat_threshold_upper(-1);
+int opt_phred20_anchor(-1);
+size_t opt_repeat_coverage(1);
+size_t opt_skip_size(0);
 std::map<std::string, bool> opt_exclude;
 
 // these four are constants calculated from the mer length
 static hash::key_type bp_comp[4];
 static hash::key_type mer_mask;
+
+#if 0
+static bool next_good_seq(const std::string &seq, size_t &s) {
+	const std::string good_bps("ACGTacgt");
+	for (; s != seq.size(); ++s) {
+		if (good_bps.find(seq[s]) != std::string::npos) {
+			return 1;
+		}
+	}
+	return 0;
+}
+#endif
 
 // given the sequence, create the key and comped key for the first mer
 // length - 1 proper (i.e., ACGT) base pairs, returning the current
@@ -35,7 +49,10 @@ static hash::key_type mer_mask;
 // proper base pairs); key and comp_key are presumed to have no set bits
 // greater than the mer_mask
 
-static size_t preload_keys(const Read &a, size_t s, size_t end, hash::key_type &key, hash::key_type &comp_key) {
+// s is the current position in the sequence; the new position, after
+// preloading, is returned
+
+static size_t preload_keys(const Read &a, size_t s, const size_t end, hash::key_type &key, hash::key_type &comp_key) {
 	a.next_good_sequence(s);
 	if (s == a.size()) {	// no good characters left
 		return end;
@@ -45,9 +62,9 @@ static size_t preload_keys(const Read &a, size_t s, size_t end, hash::key_type &
 		return end;
 	}
 	for (; s != end2; ++s) {
-		int i = a.get_seq(s);
+		const int i = a.get_seq(s);
 		if (i != -1) {
-			key = ((key << 2) & mer_mask) | i;
+			key = (key << 2) | i;
 			comp_key = (comp_key >> 2) | bp_comp[i];
 		} else {	// non-base character - advance to
 				// the next proper base and start over
@@ -64,18 +81,170 @@ static size_t preload_keys(const Read &a, size_t s, size_t end, hash::key_type &
 			--s;
 		}
 	}
+	key &= mer_mask;
 	return s;
+}
+
+// preload by homopolymer (i.e., 1+ length run of same basepair),
+// rather than individual basepair; returns information on next run
+// (if there is no next run, or not enough sequence, return 0)
+//
+// unlike preload_keys() above, the key is completely loaded and not
+// missing the last basepair, and the new position is one past the
+// next following run
+
+static int preload_keys_hp(const Read &a, size_t &s, const size_t end, hash::key_type &key, int &next_hp_basepair, int &next_hp_length) {
+	for (;; ++s) {
+		a.next_good_sequence(s);
+		if (s == a.size()) {	// no good characters left
+			return 0;
+		}
+		const size_t end2(s + opt_mer_length + 1);
+		if (end2 > end) {	// less than mer length sequence left
+			return 0;
+		}
+		int i;
+		for (; s < end2 && (i = a.get_seq(s)) != -1; ++s) {
+			key = (key << 2) | i;
+		}
+		// because of && short-circuit, i has value of a[s - 1]
+		if (i != -1) {
+			// go to end of current run
+			for (; s != end && i == a.get_seq(s); ++s) {
+				key = (key << 2) | i;
+			}
+			if (s == end) {		// no following run
+				return 0;
+			}
+			if ((i = a.get_seq(s)) != -1) {
+				// get value and length of next run
+				next_hp_basepair = i;
+				const int start_s(s);
+				for (++s; s != end && i == a.get_seq(s); ++s) { }
+				// can't get length of run when it hits the end
+				if (s == end) {
+					return 0;
+				}
+				next_hp_length = s - start_s;
+				key &= mer_mask;
+				return 1;
+			}
+		}
+	}
+}
+
+// find n-mer's and count up how many of each there are, looking at both
+// forward and comped versions of the sequence; however, add the basepair
+// and length of the homopolymer run in the forward direction to the
+// sequence hash (e.g., ACGTGGG hashes as ACGTG3), with 4 bits for length
+// 0-14 encoding 1-15, 15 meaning 16+)
+
+bool add_sequence_mers_hp(std::list<Read>::const_iterator a, const std::list<Read>::const_iterator end_a, hash &mer_list, size_t total_reads) {
+	Read b;
+	for (; a != end_a; ++a, ++total_reads) {
+		// print feedback every 10 minutes
+		if (opt_feedback && elapsed_time() >= 600) {
+			start_time();
+			fprintf(stderr, "%lu: %10lu entries used (%5.2f%%), %lu overflow (%lu reads)\n", time(NULL), mer_list.size(), double(100) * mer_list.size() / mer_list.capacity(), mer_list.overflow_size(), total_reads);
+		}
+		if (a->size() < opt_skip_size) {
+			continue;
+		}
+		if ((!opt_include.empty() && !opt_include.is_match(a->name())) || opt_exclude.find(a->name()) != opt_exclude.end()) {
+			continue;
+		}
+		hash::key_type key(0);
+		// s here points to one past the run following the current k-mer
+		size_t s(a->quality_start);
+		size_t end(a->quality_stop);
+		int next_hp_basepair, next_hp_length;
+		// set key with first n-mer+ bases
+		if (!preload_keys_hp(*a, s, end, key, next_hp_basepair, next_hp_length)) {
+			continue;
+		}
+		for (;;) {
+			key = (key << 2) | next_hp_basepair;
+			if (!mer_list.increment((key << 4) | (next_hp_length < 16 ? next_hp_length - 1 : 15))) {
+				if (opt_feedback) {
+					fprintf(stderr, "Filled hash after %lu reads\n", total_reads);
+				}
+				return 0;
+			}
+			const int i(a->get_seq(s));
+			if (i != -1) {
+				// start j at 1 because we added the first basepair above
+				for (int j(1); j != next_hp_length; ++j) {
+					key = (key << 2) | next_hp_basepair;
+				}
+				key &= mer_mask;
+				next_hp_basepair = i;
+				const int start_s(s);
+				for (++s; s != end && i == a->get_seq(s); ++s) { }
+				// can't get length of run when it hits the end
+				if (s == end) {
+					break;
+				}
+				next_hp_length = s - start_s;
+			} else {	// non-base character - start over
+				++s;	// skip the bad basepair
+				if (!preload_keys_hp(*a, s, end, key, next_hp_basepair, next_hp_length)) {
+					break;
+				}
+			}
+		}
+		// and now for the reverse direction
+		b.set_comp(*a);
+		key = 0;
+		// s here points to one past the run following the current k-mer
+		s = b.quality_start;
+		end = b.quality_stop;
+		// set key with first n-mer+ bases
+		if (!preload_keys_hp(b, s, end, key, next_hp_basepair, next_hp_length)) {
+			continue;
+		}
+		for (;;) {
+			key = (key << 2) | next_hp_basepair;
+			if (!mer_list.increment((key << 4) | (next_hp_length < 16 ? next_hp_length - 1 : 15))) {
+				if (opt_feedback) {
+					fprintf(stderr, "Filled hash after %lu reads\n", total_reads);
+				}
+				return 0;
+			}
+			const int i(b.get_seq(s));
+			if (i != -1) {
+				// start j at 1 because we added the first basepair above
+				for (int j(1); j != next_hp_length; ++j) {
+					key = (key << 2) | next_hp_basepair;
+				}
+				key &= mer_mask;
+				next_hp_basepair = i;
+				const int start_s(s);
+				for (++s; s != end && i == b.get_seq(s); ++s) { }
+				// can't get length of run when it hits the end
+				if (s == end) {
+					break;
+				}
+				next_hp_length = s - start_s;
+			} else {	// non-base character - start over
+				++s;	// skip the bad basepair
+				if (!preload_keys_hp(b, s, end, key, next_hp_basepair, next_hp_length)) {
+					break;
+				}
+			}
+		}
+	}
+	return 1;
 }
 
 // find n-mer's and count up how many of each there are, looking at both
 // forward and comped versions of the sequence
 
-bool add_sequence_mers(std::list<Read>::const_iterator a, const std::list<Read>::const_iterator end_a, hash &mer_list) {
-	for (; a != end_a; ++a) {
+bool add_sequence_mers(std::list<Read>::const_iterator a, const std::list<Read>::const_iterator end_a, hash &mer_list, size_t total_reads) {
+	for (; a != end_a; ++a, ++total_reads) {
 		// print feedback every 10 minutes
 		if (opt_feedback && elapsed_time() >= 600) {
 			start_time();
-			fprintf(stderr, "%lu : %10lu entries used (%5.2f%%), %lu overflow\n", time(NULL), mer_list.size(), static_cast<double>(100) * mer_list.size() / mer_list.capacity(), mer_list.overflow_size());
+			fprintf(stderr, "%lu: %10lu entries used (%5.2f%%), %lu overflow (%lu reads)\n", time(NULL), mer_list.size(), static_cast<double>(100) * mer_list.size() / mer_list.capacity(), mer_list.overflow_size(), total_reads);
 		}
 		if (a->size() < opt_skip_size) {
 			continue;
@@ -105,12 +274,65 @@ bool add_sequence_mers(std::list<Read>::const_iterator a, const std::list<Read>:
 	return 1;
 }
 
-bool add_sequence_mers(std::list<Read>::const_iterator a, std::list<Read>::const_iterator end_a, hash &mer_list, const std::map<std::string, hash::offset_type> &opt_readnames_exclude) {
-	for (; a != end_a; ++a) {
+void add_sequence_mers_index(std::list<Read>::const_iterator a, const std::list<Read>::const_iterator end_a, KmerLookupInfo &kmers, size_t reads_processed, const size_t total_reads) {
+	for (; a != end_a; ++a, ++reads_processed) {
 		// print feedback every 10 minutes
 		if (opt_feedback && elapsed_time() >= 600) {
 			start_time();
-			fprintf(stderr, "%lu : %10lu entries used (%5.2f%%), %lu overflow\n", time(NULL), mer_list.size(), static_cast<double>(100) * mer_list.size() / mer_list.capacity(), mer_list.overflow_size());
+			fprintf(stderr, "%lu: %.2f%% reads processed\n", time(NULL), double(100) * reads_processed / total_reads);
+		}
+		kmers.add_read_name(a->name());
+		if (a->size() < opt_skip_size) {
+			continue;
+		}
+		if ((!opt_include.empty() && !opt_include.is_match(a->name())) || opt_exclude.find(a->name()) != opt_exclude.end()) {
+			continue;
+		}
+		hash::key_type key(0);
+		hash::key_type comp_key(0);
+		const size_t end(a->quality_stop);
+		// set key with first n-mer - 1 bases
+		size_t s(preload_keys(*a, a->quality_start, end, key, comp_key));
+		for (; s != end; ++s) {
+			const int i(a->get_seq(s));
+			if (i == -1) {	// non-base character - start over
+				s = preload_keys(*a, s, end, key, comp_key);
+				--s;
+				continue;
+			}
+			key = ((key << 2) & mer_mask) | i;
+			comp_key = (comp_key >> 2) | bp_comp[i];
+			kmers.kmer_hash.add_read(key < comp_key ? key : comp_key, reads_processed);
+		}
+	}
+}
+
+void count_read_hits(const std::string &seq, const KmerLookupInfo &kmers, std::map<hash_read_hits::read_type, int> &read_hits) {
+	Read a;		// XXX - init from sew somehow
+	hash::key_type key(0);
+	hash::key_type comp_key(0);
+	const size_t end(seq.size());
+	// set key with first n-mer - 1 bases
+	size_t s(preload_keys(a, 0, end, key, comp_key));
+	for (; s != end; ++s) {
+		const int i(a.get_seq(s));
+		if (i == -1) {	// non-base character - start over
+			s = preload_keys(a, s, end, key, comp_key);
+			--s;
+			continue;
+		}
+		key = ((key << 2) & mer_mask) | i;
+		comp_key = (comp_key >> 2) | bp_comp[i];
+		kmers.kmer_hash.get_reads(key < comp_key ? key : comp_key, read_hits);
+	}
+}
+
+bool add_sequence_mers(std::list<Read>::const_iterator a, std::list<Read>::const_iterator end_a, hash &mer_list, const std::map<std::string, hash::offset_type> &opt_readnames_exclude, size_t total_reads) {
+	for (; a != end_a; ++a, ++total_reads) {
+		// print feedback every 10 minutes
+		if (opt_feedback && elapsed_time() >= 600) {
+			start_time();
+			fprintf(stderr, "%lu: %10lu entries used (%5.2f%%), %lu overflow (%lu reads)\n", time(NULL), mer_list.size(), static_cast<double>(100) * mer_list.size() / mer_list.capacity(), mer_list.overflow_size(), total_reads);
 		}
 		if (!opt_include.empty() && !opt_include.is_match(a->name())) {
 			continue;
@@ -153,10 +375,31 @@ bool add_sequence_mers(std::list<Read>::const_iterator a, std::list<Read>::const
 std::string convert_key(hash::key_type key) {
 	const char values[4] = { 'A', 'C', 'G', 'T' };
 	std::string sequence(opt_mer_length + 1, '\0');
-	for (size_t i(0); i <= opt_mer_length; ++i, key >>= 2) {
+	for (size_t i(0); i != opt_mer_length + 1; ++i, key >>= 2) {
 		sequence[opt_mer_length - i] = values[key & 3];
 	}
 	return sequence;
+}
+
+// converts key to sequence with trailing run
+
+std::string convert_key_hp(hash::key_type key, const int just_sequence) {
+	const char values[4] = { 'A', 'C', 'G', 'T' };
+	const int hp_length = (key & 15) + 1;
+	key >>= 4;
+	const char hp_basepair = values[key & 3];
+	key >>= 2;
+	std::string sequence(opt_mer_length + 1, '\0');
+	for (size_t i(0); i != opt_mer_length + 1; ++i, key >>= 2) {
+		sequence[opt_mer_length - i] = values[key & 3];
+	}
+	if (just_sequence == 0) {
+		return sequence + " " + itoa(hp_length) + hp_basepair;
+	} else if (just_sequence == 2) {	// because sometimes you want it
+		return sequence + hp_basepair;
+	} else {
+		return sequence;
+	}
 }
 
 // initialize mer-related constants
@@ -185,7 +428,7 @@ void init_mer_constants() {
 
 void print_final_input_feedback(const hash &mer_list) {
 	if (opt_feedback && mer_list.size() != 0) {
-		fprintf(stderr, "%lu : %10lu entries used (%5.2f%%), %lu overflow\n", time(NULL), mer_list.size(), static_cast<double>(100) * mer_list.size() / mer_list.capacity(), mer_list.overflow_size());
+		fprintf(stderr, "%lu: %10lu entries used (%5.2f%%), %lu overflow\n", time(NULL), mer_list.size(), static_cast<double>(100) * mer_list.size() / mer_list.capacity(), mer_list.overflow_size());
 	}
 }
 

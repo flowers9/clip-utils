@@ -1,7 +1,7 @@
 #include "hash.h"	// hash
-#include "hist_lib_hash.h"	// add_sequence_mers(), clear_mer_list(), convert_key(), init_mer_constants(), opt_feedback, opt_include, opt_mer_length, opt_skip_size, print_final_input_feedback(), reverse_key()
+#include "hist_lib_hash.h"	// add_sequence_mers(), add_sequence_mers_hp(), clear_mer_list(), convert_key(), convert_key_hp(), init_mer_constants(), opt_feedback, opt_include, opt_mer_length, opt_skip_size, print_final_input_feedback(), reverse_key()
 #include "open_compressed.h"	// close_compressed(), get_suffix(), open_compressed(), pfgets()
-#include "read.h"	// Read, opt_clip_quality, opt_clip_vector, opt_quality_cutoff
+#include "read.h"	// Read, init_read_comp(), opt_clip_quality, opt_clip_vector, opt_quality_cutoff
 #include "read_file.h"	// ReadFile, opt_strip_tracename
 #include "strtostr.h"	// strtostr()
 #include "version.h"	// VERSION
@@ -19,6 +19,7 @@
 static FILE *fp_out(stdout);
 static bool opt_aggregate;
 static bool opt_hash_clean;
+static bool opt_homopolymer;
 static bool opt_print_gc;
 static bool opt_track_dups;
 static bool opt_warnings;
@@ -68,19 +69,56 @@ static void print_mer_frequency(hash &mer_list, bool clean_mers = 0) {
 	const hash::const_iterator end_a(mer_list.end());
 	for (; a != end_a; ++a) {
 		if ((opt_frequency_min == 0 || opt_frequency_min <= a.value) && (opt_frequency_max == 0 || a.value <= opt_frequency_max)) {
-			fprintf(fp_out, "%s %lu\n", convert_key(a.key).c_str(), a.value);
-			const hash::key_type comp_key(reverse_key(a.key));
-			if (a.key != comp_key) {
-				fprintf(fp_out, "%s %lu\n", convert_key(comp_key).c_str(), a.value);
+			if (opt_homopolymer) {
+				fprintf(fp_out, "%s %lu\n", convert_key_hp(a.key).c_str(), a.value);
+			} else {
+				fprintf(fp_out, "%s %lu\n", convert_key(a.key).c_str(), a.value);
+				const hash::key_type comp_key(reverse_key(a.key));
+				if (a.key != comp_key) {
+					fprintf(fp_out, "%s %lu\n", convert_key(comp_key).c_str(), a.value);
+				}
 			}
 		}
+	}
+}
+
+// print n-mer occurence frequency, by range of following run
+// (#### 1-run-occurence 2-run-occurence ... 16+-run-occurence);
+// has a side effect of zeroing out mer_list counts
+
+static void print_mer_frequency_hp(hash &mer_list) {
+	hash::const_iterator a(mer_list.begin());
+	const hash::const_iterator end_a(mer_list.end());
+	for (; a != end_a; ++a) {
+		if (a.value == 0) {	// already did this one
+			continue;
+		}
+		double total(0);
+		// zero out run-length count region of key
+		hash::key_type key(a.key & ~15);
+		for (int i(0); i != 16; ++i, ++key) {
+			total += mer_list.value(key);
+		}
+		fprintf(fp_out, "%s %.f:", convert_key_hp(a.key, 2).c_str(), total);
+		total /= 100;	// so we print % below, rather than fractions
+		key = a.key & ~15;
+		for (int i(0); i != 16; ++i, ++key) {
+			const hash::value_type j(mer_list.value(key));
+			if (j != 0) {
+				mer_list.set_value(key, 0);
+				fprintf(fp_out, " %.2f", static_cast<double>(j) / total);
+			} else {
+				fprintf(fp_out, " -");
+			}
+		}
+		fprintf(fp_out, "\n");
 	}
 }
 
 // number of gc bases in string
 
 static unsigned long count_gc(hash::key_type key) {
-	const std::string s(convert_key(key));
+	const std::string s(opt_homopolymer ? convert_key_hp(key, 1) : convert_key(key));
 	unsigned long n(0);
 	std::string::const_iterator a(s.begin());
 	const std::string::const_iterator end_a(s.end());
@@ -116,7 +154,6 @@ static void print_mer_histogram(hash &mer_list) {
 	std::map<hash::value_type, unsigned long>::const_iterator c(counts.begin());
 	const std::map<hash::value_type, unsigned long>::const_iterator end_c(counts.end());
 	// don't include single occurrences in total
-	// (hashes don't have non-positive occurrence values)
 	if (c != end_c && c->first == 1) {
 		++c;
 	}
@@ -140,6 +177,44 @@ static void print_mer_histogram(hash &mer_list) {
 		} else {
 			fprintf(fp_out, "%lu %lu %.2f %.2f\n", c->first, c->second, x / total, i / total);
 		}
+	}
+}
+
+static void print_mer_histogram_hp(hash &mer_list) {
+	std::map<hash::value_type, unsigned long> counts;
+	std::map<int, unsigned long> counts_length;
+	hash::const_iterator a(mer_list.begin());
+	const hash::const_iterator end_a(mer_list.end());
+	for (; a != end_a; ++a) {
+		++counts[a.value];
+		++counts_length[a.key & 15];
+	}
+	std::map<hash::value_type, unsigned long>::const_iterator c(counts.begin());
+	const std::map<hash::value_type, unsigned long>::const_iterator end_c(counts.end());
+	// don't include single occurrences in total
+	if (c != end_c && c->first == 1) {
+		++c;
+	}
+	double total(0);
+	for (; c != end_c; ++c) {
+		total += static_cast<double>(c->first) * static_cast<double>(c->second);
+	}
+	c = counts.begin();
+	if (c != end_c && c->first == 1) {
+		fprintf(fp_out, "%lu %lu\n", c->first, c->second);
+		++c;
+	}
+	double i(0);
+	for (; c != end_c; ++c) {
+		const double x(static_cast<double>(100) * static_cast<double>(c->first) * static_cast<double>(c->second));
+		i += x;
+		fprintf(fp_out, "%lu %lu %.2f %.2f\n", c->first, c->second, x / total, i / total);
+	}
+	fprintf(fp_out, "\ntrailing run lengths\n");
+	std::map<int, unsigned long>::const_iterator d(counts_length.begin());
+	const std::map<int, unsigned long>::const_iterator end_d(counts_length.end());
+	for (; d != end_d; ++d) {
+		fprintf(fp_out, "%02d %lu\n", d->first + 1, d->second);
 	}
 }
 
@@ -258,6 +333,7 @@ static void print_usage() {
 		"    -f ## when clipping quality or vector, use ## as the target quality [20]\n"
 		"    -g    print percent gc content at each frequency\n"
 		"    -h    print this information\n"
+		"    -H    append following homopolymer basepair and length to n-mer\n"
 		"    -i    turn off status updates\n"
 		"    -k ## skip reads smaller than this\n"
 		"    -l ## filename containing names of reads to subtract from results\n"
@@ -296,6 +372,7 @@ static void get_opts(int argc, char **argv) {
 	opt_frequency_max = 0;
 	opt_frequency_min = 0;
 	opt_hash_clean = 0;
+	opt_homopolymer = 0;
 	opt_mer_length = 24;
 	opt_nmers = static_cast<size_t>(-1);
 	opt_print_gc = 0;
@@ -306,7 +383,7 @@ static void get_opts(int argc, char **argv) {
 	opt_track_dups = 0;
 	opt_warnings = 1;
 	int c;
-	while ((c = getopt(argc, argv, "aB:cdf:ghik:l:L:m:o:p:qs:S:tT:vVw:W:z:Z")) != EOF) {
+	while ((c = getopt(argc, argv, "aB:cdf:ghHik:l:L:m:o:p:qs:S:tT:vVw:W:z:Z")) != EOF) {
 		switch (c) {
 		    case 'a':
 			opt_aggregate = 1;
@@ -335,6 +412,9 @@ static void get_opts(int argc, char **argv) {
 			break;
 		    case 'h':
 			print_usage();
+			break;
+		    case 'H':
+			opt_homopolymer = 1;
 			break;
 		    case 'i':
 			opt_feedback = 0;
@@ -426,6 +506,13 @@ static void get_opts(int argc, char **argv) {
 			print_usage();
 		}
 	}
+	if (opt_homopolymer) {
+		init_read_comp();
+	}
+	if (opt_homopolymer && opt_mer_length > 29) {
+		fprintf(stderr, "Error: bad mer length (%lu): max is 29 when using -H option\n", opt_mer_length);
+		print_usage();
+	}
 	if (opt_nmers == static_cast<size_t>(-1) && opt_histogram_restore.empty()) {
 		opt_nmers = 200 * 1024 * 1024;
 	}
@@ -505,14 +592,20 @@ static int create_histogram(const int argc, char ** const argv, hash &mer_list) 
 			++err;
 			continue;
 		}
+		size_t total_reads(0);
 		while (file.read_batch(opt_warnings) != -1) {
-			if (opt_readnames_exclude) {
-				if (!add_sequence_mers(file.read_list.begin(), file.read_list.end(), mer_list, opt_readnames)) {
+			if (opt_homopolymer) {
+				if (!add_sequence_mers_hp(file.read_list.begin(), file.read_list.end(), mer_list, total_reads)) {
 					fprintf(stderr, "Error: n-mer list incomplete - give a larger -z value\n");
 				}
-			} else if (!add_sequence_mers(file.read_list.begin(), file.read_list.end(), mer_list)) {
+			} else if (opt_readnames_exclude) {
+				if (!add_sequence_mers(file.read_list.begin(), file.read_list.end(), mer_list, opt_readnames, total_reads)) {
+					fprintf(stderr, "Error: n-mer list incomplete - give a larger -z value\n");
+				}
+			} else if (!add_sequence_mers(file.read_list.begin(), file.read_list.end(), mer_list, total_reads)) {
 				fprintf(stderr, "Error: n-mer list incomplete - give a larger -z value\n");
 			}
+			total_reads += file.read_list.size();
 		}
 		if (!opt_aggregate) {
 			if (opt_feedback) {
@@ -524,7 +617,13 @@ static int create_histogram(const int argc, char ** const argv, hash &mer_list) 
 				putc('-', fp_out);
 			}
 			fprintf(fp_out, "\n");
-			if (opt_readnames_exclude > 0) {
+			if (opt_homopolymer) {
+				if (opt_frequency_min == 0 && opt_frequency_max == 0) {
+					print_mer_histogram_hp(mer_list);
+				} else {
+					print_mer_frequency_hp(mer_list);
+				}
+			} else if (opt_readnames_exclude > 0) {
 				print_mer_histogram_sub(mer_list);
 			} else if (opt_readnames_exclude < 0) {
 				print_mer_histogram_add(mer_list);
@@ -569,7 +668,13 @@ int main(int argc, char **argv) {
 			print_final_input_feedback(mer_list);
 			fprintf(stderr, "Printing histogram\n");
 		}
-		if (opt_readnames_exclude > 0) {
+		if (opt_homopolymer) {
+			if (opt_frequency_min == 0 && opt_frequency_max == 0) {
+				print_mer_histogram_hp(mer_list);
+			} else {
+				print_mer_frequency_hp(mer_list);
+			}
+		} else if (opt_readnames_exclude > 0) {
 			print_mer_histogram_sub(mer_list);
 		} else if (opt_readnames_exclude < 0) {
 			print_mer_histogram_add(mer_list);

@@ -354,7 +354,7 @@ static int get_opts(int argc, char **argv) {
 	opt_verbose = 0;
 	int c;
 	while ((c = getopt(argc, argv, "3l:s:v")) != -1) {
-		switch(c) {
+		switch (c) {
 		    case '3':
 			opt_454_3well = 1;
 			break;

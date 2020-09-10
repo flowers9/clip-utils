@@ -372,9 +372,9 @@ hash::offset_type hash::insert_offset(key_type key) {
 	}
 }
 
-// find a key; return modulus as offset if not found
+// find a key; return modulus if not found
 
-hash::offset_type hash::find_offset(key_type key) const {
+hash::offset_type hash::find_offset(const key_type key) const {
 	offset_type i(key % modulus);
 	if (key_list[i] == key) {
 		return i;
@@ -741,7 +741,7 @@ bool hash::add_alt(const key_type key, const value_type new_value, const value_t
 }
 
 // add values from hash table to this hash; returns if hashes are
-// successfully added (failure is generally because out lack of space)
+// successfully added (failure is generally because of lack of space)
 
 bool hash::add_hash(hash &h) {
 	// see if hashes are compatible
@@ -908,7 +908,7 @@ void hash::set_no_space_response(int i, const std::string &s) {
 	}
 }
 
-// sort hash and save to disk for later processing
+// save sorted hash to disk for later processing
 void hash::save_state(void) {
 	static int count(-1);
 	std::ostringstream s;
@@ -1023,4 +1023,21 @@ void hash::prep_for_readback(offset_type &offset, std::map<key_type, std::pair<v
 	}
 	// by here, next_keys will have a key-sorted list of exactly
 	// one key per file
+}
+
+bool hash::set_value(const key_type key, const value_type value) {
+	const offset_type i(insert_offset(key));
+	if (i == modulus) {	// insert failed
+		return 0;
+	}
+	if (value <= max_small_value) {
+		value_list[i] = value;
+		value_map.erase(key);
+	} else {
+		value_list[i] = max_small_value;
+		if (can_overflow) {
+			value_map[key] = value - max_small_value;
+		}
+	}
+	return 1;
 }

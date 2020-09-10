@@ -22,9 +22,12 @@ static void print_usage(void) {
 
 static void get_passes(const std::string ccs_bam, std::map<std::string, int> &read_passes) {
 	// BamReader throws on error
+std::cerr << "reading " << ccs_bam << '\n';
 	PacBio::BAM::BamReader f(ccs_bam);
+std::cerr << "opened!\n";
 	PacBio::BAM::BamRecord r;
 	while (f.GetNext(r)) {
+std::cerr << '.';
 		std::string s(r.FullName());
 		// strip /ccs from end
 		if (s.length() > 3 && s.substr(s.length() - 4).compare("/ccs") == 0) {
