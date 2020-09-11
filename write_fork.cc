@@ -1,3 +1,4 @@
+#include "open_compressed.h"	// get_suffix()
 #include "write_fork.h"
 #include <cassert>	// assert()
 #include <errno.h>	// errno
@@ -162,6 +163,24 @@ int write_fork(const std::list<std::string> &args, const std::string &filename, 
 		local.add_open(fd, pid);
 	}
 	return fd;
+}
+
+// try and guess if we should pipe this through a compressor
+int write_fork(const std::string &filename, const mode_t mode) {
+	std::string suffix;
+	get_suffix(filename, suffix);
+	std::list<std::string> args;
+	if (suffix == ".gz") {
+		args.push_back("gzip");
+		args.push_back("-c");
+	} else if (suffix == ".bz2") {
+		args.push_back("bzip2");
+		args.push_back("-c");
+	} else if (suffix == ".Z") {
+		args.push_back("compress");
+		args.push_back("-c");
+	}
+	return write_fork(args, filename, mode);
 }
 
 // close the file and wait on the forked process

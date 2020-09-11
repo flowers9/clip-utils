@@ -9,12 +9,14 @@
 // Currently it generates a 90% full hash; possibly that may become a run-time
 // variable in the future.
 
-#include "hash.h"	// hash
 #include <limits.h>	// UCHAR_MAX, ULONG_MAX
 #include <map>		// map<>
 #include <stdint.h>	// uint32_t, uint64_t
 #include <string>	// string
 #include <utility>	// pair<>
+
+class hash;
+class KmerLookupInfo;
 
 // a non-palindrome random pattern with one of the two highest bits set,
 // and such that the complement is of lower value (so it only collides
@@ -64,7 +66,7 @@ class hash_read_hits {
 		delete[] read_list;
 	}
 	void add_read(key_type, read_type);
-	void get_reads(key_type, std::map<read_type, int> &reads) const;
+	void get_reads(key_type, std::map<read_type, int> &, value_type) const;
 	// the -1s are to allow for having to keep at least one INVALID_KEY
 	// in the array for lookup termination purposes
 	offset_type size(void) const {
@@ -81,6 +83,7 @@ class hash_read_hits {
 	}
 	void save(int) const;
 	void restore(int);
+	void print_hash(const KmerLookupInfo &) const;
 };
 
 #endif // !_HASH_READ_HITS_H

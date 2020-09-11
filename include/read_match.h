@@ -1,19 +1,20 @@
 #ifndef _READ_MATCH_H
 #define _READ_MATCH_H
 
-#include "library_read.h"	/* LibraryRead */
-#include <regex.h>	/* regex_t, regmatch_t */
-#include <string>	/* string */
-#include <sys/types.h>	/* size_t */
+#include <regex.h>	// regex_t, regmatch_t
+#include <string>	// string
+#include <sys/types.h>	// size_t
 
-typedef struct _ProtoReadPattern {
+class LibraryRead;
+
+struct ProtoReadPattern {
 	int library_hint;
 	const char *regexp;
-	int subexpressions;	/* total number of subexpressions */
-	int direction;		/* subexpression to use for direction */
-	const char *forward;	/* match for forward direction */
-	const char *reverse;	/* match for reverse direction */
-} ProtoReadPattern;
+	int subexpressions;	// total number of subexpressions
+	int direction;		// subexpression to use for direction
+	const char *forward;	// match for forward direction
+	const char *reverse;	// match for reverse direction
+};
 
 class ReadMatch {
     private:
@@ -33,4 +34,4 @@ class ReadMatch {
 	bool index_pair_name(const LibraryRead &, std::string &);
 };
 
-#endif /* !_READ_MATCH_H */
+#endif // !_READ_MATCH_H

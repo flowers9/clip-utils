@@ -1,11 +1,14 @@
-#include "hash_read_hits.h"
 #include "hash.h"	// hash
+#include "hash_read_hits.h"
+#include "hist_lib_hash.h"	// convert_key()
 #include "itoa.h"	// itoa()
+#include "kmer_lookup_info.h"	// KmerLookupInfo
 #include "local_endian.h"	// big_endian
 #include "next_prime.h"	// next_prime()
 #include "open_compressed.h"	// pfread()
 #include "write_fork.h"	// pfwrite()
 #include <cassert>	// assert()
+#include <iostream>	// cout
 #include <limits.h>	// UINT64_MAX
 #include <map>		// map<>
 #include <new>		// new[]
@@ -17,7 +20,7 @@
 // description beginning of saved file
 
 std::string hash_read_hits::boilerplate() const {
-	std::string s("hash\n");
+	std::string s("hash_read_hits\n");
 	s += itoa(sizeof(key_type));
 	s += " bytes\n";
 #ifdef big_endian
@@ -132,7 +135,7 @@ void hash_read_hits::add_read(const key_type key, const read_type read) {
 
 // add reads associated with kmer (if any) to list
 
-void hash_read_hits::get_reads(const key_type key, std::map<read_type, int> &reads) const {
+void hash_read_hits::get_reads(const key_type key, std::map<read_type, int> &reads, const value_type max_hits) const {
 	const offset_type i(find_offset(key));
 	if (i == modulus) {	// key not found
 		return;
@@ -145,10 +148,12 @@ void hash_read_hits::get_reads(const key_type key, std::map<read_type, int> &rea
 			n += a->second;
 		}
 	}
-	size_t j(read_offset_list[i]);
-	const size_t end_j(j + n);
-	for (; j != end_j; ++j) {
-		++reads[read_list[j]];
+	if (n <= max_hits) {
+		size_t j(read_offset_list[i]);
+		const size_t end_j(j + n);
+		for (; j != end_j; ++j) {
+			++reads[read_list[j]];
+		}
 	}
 }
 
@@ -202,5 +207,27 @@ void hash_read_hits::restore(const int fd) {
 		pfread(fd, &i, sizeof(i));
 		pfread(fd, &j, sizeof(j));
 		value_map[i] = j;
+	}
+}
+
+// for debugging - print entire hash
+void hash_read_hits::print_hash(const KmerLookupInfo &kmers) const {
+	offset_type i(0);
+	for (; i != modulus; ++i) {
+		if (key_list[i] != INVALID_KEY) {
+			value_type n(value_list[i]);
+			if (n == max_small_value) {
+				// use find() to avoid inserting a value into value_map
+				const std::map<offset_type, value_type>::const_iterator a(value_map.find(i));
+				if (a != value_map.end()) {
+					n += a->second;
+				}
+			}
+			std::cout << convert_key(key_list[i]) << ' ' << n << '\n';
+			read_offset_type j(read_offset_list[i]);
+			for (n += j; j != n; ++j) {
+				std::cout << '\t' << kmers.read_name(read_list[j]) << '\n';
+			}
+		}
 	}
 }

@@ -76,7 +76,7 @@ bin/histogram_hash: obj/open_compressed.o obj/get_name.o obj/hash.o obj/hist_lib
 bin/kmer_matching_setup: obj/kmer_matching_setup.o obj/get_name.o obj/hash.o obj/hash_read_hits.o obj/hist_lib_hash.o obj/kmer_lookup_info.o obj/next_prime.o obj/open_compressed.o obj/pattern.o obj/read.o obj/read_file.o obj/time_used.o obj/write_fork.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-bin/kmer_matching: obj/kmer_matching.o obj/breakup_line.o obj/hash_read_hits.o obj/hist_lib_hash.o obj/kmer_lookup_info.o obj/next_prime.o obj/open_compressed.o obj/pattern.o obj/read.o obj/read_file.o obj/strtostr.o obj/time_used.o
+bin/kmer_matching: obj/kmer_matching.o obj/breakup_line.o obj/hash_read_hits.o obj/hist_lib_hash.o obj/kmer_lookup_info.o obj/next_prime.o obj/open_compressed.o obj/pattern.o obj/read.o obj/read_file.o obj/strtostr.o obj/time_used.o obj/write_fork.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) -lreadline
 
 bin/library_stats: obj/find_library.o obj/open_compressed.o obj/get_name.o obj/library_match.o obj/library_read_lib.o obj/library_stats.o obj/parse_read.o obj/pattern.o obj/pretty_print.o obj/read.o obj/read_lib.o obj/read_match.o

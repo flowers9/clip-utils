@@ -7,7 +7,7 @@
 #include "hash.h"	// hash
 #include "hist_lib_hash.h"	// add_sequence_mers(), add_sequence_mers_index(), init_mer_constants(), opt_feedback, opt_include, opt_mer_length, opt_skip_size, print_final_input_feedback()
 #include "kmer_lookup_info.h"	// KmerLookupInfo
-#include "open_compressed.h"	// close_compressed(), find_suffix(), open_compressed(), pfgets()
+#include "open_compressed.h"	// close_compressed(), get_suffix(), open_compressed(), pfgets()
 #include "read.h"	// Read, opt_clip_quality, opt_clip_vector, opt_quality_cutoff
 #include "read_file.h"	// ReadFile, opt_strip_tracename
 #include "version.h"	// VERSION
@@ -183,7 +183,7 @@ static void get_opts(int argc, char **argv) {
 	}
 	if (!opt_output.empty()) {
 		std::string suffix;
-		find_suffix(opt_output, suffix);
+		get_suffix(opt_output, suffix);
 		std::list<std::string> args;
 		if (suffix == ".gz") {
 			args.push_back("gzip");
@@ -270,8 +270,8 @@ int main(int argc, char **argv) {
 		print_final_input_feedback(mer_list);
 		fprintf(stderr, "Initializing kmer lookups\n");
 	}
-	KmerLookupInfo kmers(total_reads, total_name_size, mer_list);
-	delete mer_list_ptr;
+	KmerLookupInfo kmers(opt_mer_length + 1, total_reads, total_name_size, mer_list);
+	delete mer_list_ptr;				// free up memory (hopefully)
 	index_kmers(&argv[optind], &argv[argc], kmers, total_reads);
 	if (opt_feedback) {
 		fprintf(stderr, "Saving kmer lookup info\n");

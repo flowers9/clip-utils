@@ -301,7 +301,7 @@ void add_sequence_mers_index(std::list<Read>::const_iterator a, const std::list<
 	}
 }
 
-void count_read_hits(const std::string &seq, const KmerLookupInfo &kmers, std::map<hash_read_hits::read_type, int> &read_hits) {
+void count_read_hits(const std::string &seq, const KmerLookupInfo &kmers, std::map<hash_read_hits::read_type, int> &read_hits, const hash_read_hits::value_type kmer_max_hits) {
 	hash::key_type key(0);
 	hash::key_type comp_key(0);
 	const size_t end(seq.size());
@@ -316,7 +316,7 @@ void count_read_hits(const std::string &seq, const KmerLookupInfo &kmers, std::m
 		}
 		key = ((key << 2) & mer_mask) | i;
 		comp_key = (comp_key >> 2) | bp_comp[i];
-		kmers.kmer_hash.get_reads(key < comp_key ? key : comp_key, read_hits);
+		kmers.kmer_hash.get_reads(key < comp_key ? key : comp_key, read_hits, kmer_max_hits);
 	}
 }
 

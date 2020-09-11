@@ -1,12 +1,13 @@
 #ifndef _HIST_LIB_HASHN_H
 #define _HIST_LIB_HASHN_H
 
-#include "hashn.h"	// hashn
+#include "hashn.h"	// hashn, hashn::key_type, hashn::value_type
 #include "pattern.h"	// Pattern
-#include "read.h"	// Read
 #include <map>		// map<>
 #include <string>	// string
 #include <sys/types.h>	// size_t
+
+class Read;
 
 extern Pattern opt_include;
 extern bool opt_feedback;

@@ -6,6 +6,7 @@
 
 void KmerLookupInfo::save(const int fd) const {
 	kmer_hash.save(fd);
+	pfwrite(fd, &mer_length_, sizeof(mer_length_));
 	pfwrite(fd, &count, sizeof(count));
 	pfwrite(fd, &data_size, sizeof(data_size));
 	pfwrite(fd, list, count * sizeof(hash_read_hits::read_type));
@@ -14,6 +15,7 @@ void KmerLookupInfo::save(const int fd) const {
 
 void KmerLookupInfo::restore(const int fd) {
 	kmer_hash.restore(fd);
+	pfread(fd, &mer_length_, sizeof(mer_length_));
 	pfread(fd, &count, sizeof(count));
 	pfread(fd, &data_size, sizeof(data_size));
 	list = new hash_read_hits::read_type[count];

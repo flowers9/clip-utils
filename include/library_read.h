@@ -1,7 +1,7 @@
 #ifndef _LIBRARY_READ_H
 #define _LIBRARY_READ_H
 
-#include "read.h"	/* Read */
+#include "read.h"	// Read
 
 class LibraryRead : public Read {
     public:
@@ -14,4 +14,4 @@ class LibraryRead : public Read {
 	~LibraryRead(void) { }
 };
 
-#endif /* !_LIBRARY_READ_H */
+#endif // !_LIBRARY_READ_H
