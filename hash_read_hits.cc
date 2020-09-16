@@ -59,7 +59,7 @@ hash_read_hits::hash_read_hits(hash &mer_list, const double hash_usage) {
 		key_list[i] = INVALID_KEY;
 	}
 	// now copy over keys from mer_list, and initialize offsets into read_list
-	size_t offset(0);
+	read_offset_type offset(0);
 	for (a = mer_list.begin(); a != end_a; ++a) {
 		const offset_type i(insert_offset(a.key));
 		assert(i != modulus);	// insert should not fail

@@ -11,7 +11,7 @@
 #include "read.h"	// Read, opt_clip_quality, opt_clip_vector, opt_quality_cutoff
 #include "read_file.h"	// ReadFile, opt_strip_tracename
 #include "version.h"	// VERSION
-#include "write_fork.h"	// close_fork(), pfputs(), write_fork()
+#include "write_fork.h"	// close_fork_wait(), pfputs(), write_fork()
 #include <getopt.h>	// getopt(), optarg, optind
 #include <new>		// new
 #include <regex.h>	// REG_EXTENDED, REG_NOSUB
@@ -255,28 +255,31 @@ static void index_kmers(char **argv, char ** const end_argv, KmerLookupInfo &kme
 int main(int argc, char **argv) {
 	get_opts(argc, argv);
 	if (opt_feedback) {
-		fprintf(stderr, "Initializing n-mer hash\n");
+		fprintf(stderr, "%lu: Initializing n-mer hash\n", time(NULL));
 	}
 	init_mer_constants();
 	size_t total_reads(0), total_name_size(0);
 	// allocate this dynamically so we can deallocate it later and free up the memory
-	hash *mer_list_ptr(new hash);
-	hash &mer_list(*mer_list_ptr);
-	const int err(count_kmers(&argv[optind], &argv[argc], mer_list, total_reads, total_name_size));
+	hash *mer_list(new hash);
+	const int err(count_kmers(&argv[optind], &argv[argc], *mer_list, total_reads, total_name_size));
 	if (err != 0) {
 		return err;
 	}
 	if (opt_feedback) {
-		print_final_input_feedback(mer_list);
+		print_final_input_feedback(*mer_list);
 		fprintf(stderr, "Initializing kmer lookups\n");
 	}
-	KmerLookupInfo kmers(opt_mer_length + 1, total_reads, total_name_size, mer_list);
-	delete mer_list_ptr;				// free up memory (hopefully)
+	KmerLookupInfo kmers(opt_mer_length + 1, total_reads, total_name_size, *mer_list);
+	delete mer_list;				// free up memory (hopefully)
 	index_kmers(&argv[optind], &argv[argc], kmers, total_reads);
 	if (opt_feedback) {
+		fprintf(stderr, "%lu: all reads processed\n", time(NULL));
 		fprintf(stderr, "Saving kmer lookup info\n");
 	}
 	kmers.save(fd_out);
-	close_fork(fd_out);
+	close_fork_wait(fd_out);
+	if (opt_feedback) {
+		fprintf(stderr, "%lu: kmer lookup info saved\n", time(NULL));
+	}
 	return 0;
 }

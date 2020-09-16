@@ -24,8 +24,8 @@ class KmerLookupInfo {
     public:
 	hash_read_hits kmer_hash;
 	// total_length doesn't include ending nulls
-	explicit KmerLookupInfo() : mer_length_(0), count(0), data_size(0), list(0), data(0) { };
-	explicit KmerLookupInfo(const size_t mer_length_in, const size_t total_reads, const size_t total_name_size, hash &mer_list, const double hash_usage = 0.9) : mer_length_(mer_length_in), count(0), data_size(0), list(new hash_read_hits::read_type[total_reads]), data(new char[total_name_size + total_reads]), kmer_hash(mer_list, hash_usage) { };
+	explicit KmerLookupInfo() : mer_length_(0), count(0), data_size(0), list(0), data(0) { }
+	explicit KmerLookupInfo(const size_t mer_length_in, const size_t total_reads, const size_t total_name_size, hash &mer_list, const double hash_usage = 0.9) : mer_length_(mer_length_in), count(0), data_size(0), list(new hash_read_hits::read_type[total_reads]), data(new char[total_name_size + total_reads]), kmer_hash(mer_list, hash_usage) { }
 	~KmerLookupInfo() {
 		if (list) {
 			delete[] list;
@@ -33,9 +33,12 @@ class KmerLookupInfo {
 		if (data) {
 			delete[] data;
 		}
-	};
+	}
 	size_t mer_length() const {
 		return mer_length_;
+	}
+	hash_read_hits::read_type read_count() const {
+		return count;
 	}
 	void add_read_name(const std::string &name) {
 		list[count] = data_size;

@@ -37,7 +37,7 @@ class Pattern {
 	}
 	const std::string &regex(void) const {
 		return regex_;
-	};
+	}
 };
 
 #endif // !_PATTERN_H

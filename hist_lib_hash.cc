@@ -31,16 +31,6 @@ std::map<std::string, bool> opt_exclude;
 static hash::key_type bp_comp[4];
 static hash::key_type mer_mask;
 
-static bool next_good_basepair(const std::string &seq, size_t &s) {
-	const std::string good_basepairs("ACGTacgt");
-	for (; s != seq.size(); ++s) {
-		if (good_basepairs.find(seq[s]) != std::string::npos) {
-			return 1;
-		}
-	}
-	return 0;
-}
-
 // given the sequence, create the key and comped key for the first mer
 // length - 1 proper (i.e., ACGT) base pairs, returning the current
 // position in the sequence (or end, if there aren't at least mer length
@@ -50,8 +40,9 @@ static bool next_good_basepair(const std::string &seq, size_t &s) {
 // s is the current position in the sequence; the new position, after
 // preloading, is returned
 
-static size_t preload_keys(const std::string &seq, size_t s, const size_t end, hash::key_type &key, hash::key_type &comp_key) {
-	if (!next_good_basepair(seq, s)) {	// no good characters left
+static size_t preload_keys(const Read &a, size_t s, const size_t end, hash::key_type &key, hash::key_type &comp_key) {
+	a.next_good_sequence(s);
+	if (s == a.size()) {    // no good characters left
 		return end;
 	}
 	size_t end2(s + opt_mer_length);
@@ -59,14 +50,15 @@ static size_t preload_keys(const std::string &seq, size_t s, const size_t end, h
 		return end;
 	}
 	for (; s != end2; ++s) {
-		const int i(seq[s]);
+		const int i(a.get_seq(s));
 		if (i != -1) {
 			key = (key << 2) | i;
 			comp_key = (comp_key >> 2) | bp_comp[i];
 		} else {	// non-base character - advance to
 				// the next proper base and start over
 			++s;
-			if (!next_good_basepair(seq, s)) {	// no good characters left
+			a.next_good_sequence(s);
+			if (s == a.size()) {    // no good characters left
 				return end;
 			}
 			end2 = s + opt_mer_length;
@@ -88,9 +80,10 @@ static size_t preload_keys(const std::string &seq, size_t s, const size_t end, h
 // missing the last basepair, and the new position is one past the
 // next following run
 
-static int preload_keys_hp(const std::string &seq, size_t &s, const size_t end, hash::key_type &key, int &next_hp_basepair, int &next_hp_length) {
+static int preload_keys_hp(const Read &a, size_t &s, const size_t end, hash::key_type &key, int &next_hp_basepair, int &next_hp_length) {
 	for (;; ++s) {
-		if (!next_good_basepair(seq, s)) {	// no good characters left
+		a.next_good_sequence(s);
+		if (s == a.size()) {    // no good characters left
 			return 0;
 		}
 		const size_t end2(s + opt_mer_length + 1);
@@ -98,23 +91,23 @@ static int preload_keys_hp(const std::string &seq, size_t &s, const size_t end, 
 			return 0;
 		}
 		int i;
-		for (; s < end2 && (i = seq[s]) != -1; ++s) {
+		for (; s < end2 && (i = a.get_seq(s)) != -1; ++s) {
 			key = (key << 2) | i;
 		}
 		// because of && short-circuit, i has value of a[s - 1]
 		if (i != -1) {
 			// go to end of current run
-			for (; s != end && i == seq[s]; ++s) {
+			for (; s != end && i == a.get_seq(s); ++s) {
 				key = (key << 2) | i;
 			}
 			if (s == end) {		// no following run
 				return 0;
 			}
-			if ((i = seq[s]) != -1) {
+			if ((i = a.get_seq(s)) != -1) {
 				// get value and length of next run
 				next_hp_basepair = i;
 				const int start_s(s);
-				for (++s; s != end && i == seq[s]; ++s) { }
+				for (++s; s != end && i == a.get_seq(s); ++s) { }
 				// can't get length of run when it hits the end
 				if (s == end) {
 					return 0;
@@ -153,7 +146,7 @@ bool add_sequence_mers_hp(std::list<Read>::const_iterator a, const std::list<Rea
 		size_t end(a->quality_stop);
 		int next_hp_basepair, next_hp_length;
 		// set key with first n-mer+ bases
-		if (!preload_keys_hp(a->sequence(), s, end, key, next_hp_basepair, next_hp_length)) {
+		if (!preload_keys_hp(*a, s, end, key, next_hp_basepair, next_hp_length)) {
 			continue;
 		}
 		for (;;) {
@@ -181,7 +174,7 @@ bool add_sequence_mers_hp(std::list<Read>::const_iterator a, const std::list<Rea
 				next_hp_length = s - start_s;
 			} else {	// non-base character - start over
 				++s;	// skip the bad basepair
-				if (!preload_keys_hp(a->sequence(), s, end, key, next_hp_basepair, next_hp_length)) {
+				if (!preload_keys_hp(*a, s, end, key, next_hp_basepair, next_hp_length)) {
 					break;
 				}
 			}
@@ -193,7 +186,7 @@ bool add_sequence_mers_hp(std::list<Read>::const_iterator a, const std::list<Rea
 		s = b.quality_start;
 		end = b.quality_stop;
 		// set key with first n-mer+ bases
-		if (!preload_keys_hp(b.sequence(), s, end, key, next_hp_basepair, next_hp_length)) {
+		if (!preload_keys_hp(b, s, end, key, next_hp_basepair, next_hp_length)) {
 			continue;
 		}
 		for (;;) {
@@ -221,7 +214,7 @@ bool add_sequence_mers_hp(std::list<Read>::const_iterator a, const std::list<Rea
 				next_hp_length = s - start_s;
 			} else {	// non-base character - start over
 				++s;	// skip the bad basepair
-				if (!preload_keys_hp(b.sequence(), s, end, key, next_hp_basepair, next_hp_length)) {
+				if (!preload_keys_hp(b, s, end, key, next_hp_basepair, next_hp_length)) {
 					break;
 				}
 			}
@@ -250,11 +243,11 @@ bool add_sequence_mers(std::list<Read>::const_iterator a, const std::list<Read>:
 		hash::key_type comp_key(0);
 		const size_t end(a->quality_stop);
 		// set key with first n-mer - 1 bases
-		size_t s(preload_keys(a->sequence(), a->quality_start, end, key, comp_key));
+		size_t s(preload_keys(*a, a->quality_start, end, key, comp_key));
 		for (; s != end; ++s) {
 			const int i(a->get_seq(s));
 			if (i == -1) {	// non-base character - start over
-				s = preload_keys(a->sequence(), s, end, key, comp_key);
+				s = preload_keys(*a, s, end, key, comp_key);
 				--s;
 				continue;
 			}
@@ -286,11 +279,11 @@ void add_sequence_mers_index(std::list<Read>::const_iterator a, const std::list<
 		hash::key_type comp_key(0);
 		const size_t end(a->quality_stop);
 		// set key with first n-mer - 1 bases
-		size_t s(preload_keys(a->sequence(), a->quality_start, end, key, comp_key));
+		size_t s(preload_keys(*a, a->quality_start, end, key, comp_key));
 		for (; s != end; ++s) {
 			const int i(a->get_seq(s));
 			if (i == -1) {	// non-base character - start over
-				s = preload_keys(a->sequence(), s, end, key, comp_key);
+				s = preload_keys(*a, s, end, key, comp_key);
 				--s;
 				continue;
 			}
@@ -302,15 +295,16 @@ void add_sequence_mers_index(std::list<Read>::const_iterator a, const std::list<
 }
 
 void count_read_hits(const std::string &seq, const KmerLookupInfo &kmers, std::map<hash_read_hits::read_type, int> &read_hits, const hash_read_hits::value_type kmer_max_hits) {
+	Read a("", seq);
 	hash::key_type key(0);
 	hash::key_type comp_key(0);
 	const size_t end(seq.size());
 	// set key with first n-mer - 1 bases
-	size_t s(preload_keys(seq, 0, end, key, comp_key));
+	size_t s(preload_keys(a, 0, end, key, comp_key));
 	for (; s != end; ++s) {
-		const int i(seq[s]);
+		const int i(a.get_seq(s));
 		if (i == -1) {	// non-base character - start over
-			s = preload_keys(seq, s, end, key, comp_key);
+			s = preload_keys(a, s, end, key, comp_key);
 			--s;
 			continue;
 		}
@@ -341,11 +335,11 @@ bool add_sequence_mers(std::list<Read>::const_iterator a, std::list<Read>::const
 		hash::key_type comp_key = 0;
 		size_t end = a->quality_stop;
 		// set key with first n-mer - 1 bases
-		size_t s = preload_keys(a->sequence(), a->quality_start, end, key, comp_key);
+		size_t s = preload_keys(*a, a->quality_start, end, key, comp_key);
 		for (; s != end; ++s) {
 			int i = a->get_seq(s);
 			if (i == -1) {	// non-base character - start over
-				s = preload_keys(a->sequence(), s, end, key, comp_key);
+				s = preload_keys(*a, s, end, key, comp_key);
 				--s;
 				continue;
 			}
@@ -442,11 +436,11 @@ void count_kmers(const Read &a, const hash &mer_list, size_t &kmers, size_t &r_k
 	std::map<hash::key_type, char> r_kmers_list; // list of repetitive kmers
 	size_t end(a.quality_stop);
 	// set key with first n-mer - 1 bases
-	size_t s(preload_keys(a.sequence(), a.quality_start, end, key, comp_key));
+	size_t s(preload_keys(a, a.quality_start, end, key, comp_key));
 	for (; s < end; ++s) {
 		const int i(a.get_seq(s));
 		if (i == -1) {
-			s = preload_keys(a.sequence(), s, end, key, comp_key);
+			s = preload_keys(a, s, end, key, comp_key);
 			--s;
 			continue;
 		}
@@ -495,7 +489,7 @@ static void create_mask(const Read &a, const hash &mer_list, std::string &mask) 
 	std::list<int> window;
 	size_t end = a.quality_stop;
 	// set key with first n-mer - 1 bases
-	size_t s = preload_keys(a.sequence(), a.quality_start, end, key, comp_key);
+	size_t s = preload_keys(a, a.quality_start, end, key, comp_key);
 	for (; s < end; ++s) {
 		int i = a.get_seq(s);
 		if (i == -1) {	// non-base character - advance to
@@ -510,7 +504,7 @@ static void create_mask(const Read &a, const hash &mer_list, std::string &mask) 
 			}
 			total = 0;
 			window.clear();
-			s = preload_keys(a.sequence(), s, end, key, comp_key);
+			s = preload_keys(a, s, end, key, comp_key);
 			--s;
 			continue;
 		}
@@ -693,7 +687,7 @@ static unsigned long count_phreds(const Read &a, const hash &mer_list, unsigned 
 	std::list<int> window;
 	size_t end = a.quality_stop;
 	// set key with first n-mer - 1 bases
-	size_t s = preload_keys(a.sequence(), a.quality_start, end, key, comp_key);
+	size_t s = preload_keys(a, a.quality_start, end, key, comp_key);
 	// -2 if last basepair was repetitive, -1 if it was not, non-negative
 	// if it might count (value equal to size of run of maybes)
 	int state = -1;
@@ -712,7 +706,7 @@ static unsigned long count_phreds(const Read &a, const hash &mer_list, unsigned 
 			}
 			total = 0;
 			window.clear();
-			s = preload_keys(a.sequence(), s, end, key, comp_key);
+			s = preload_keys(a, s, end, key, comp_key);
 			--s;
 			continue;
 		}

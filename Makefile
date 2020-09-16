@@ -76,8 +76,10 @@ bin/histogram_hash: obj/open_compressed.o obj/get_name.o obj/hash.o obj/hist_lib
 bin/kmer_matching_setup: obj/kmer_matching_setup.o obj/get_name.o obj/hash.o obj/hash_read_hits.o obj/hist_lib_hash.o obj/kmer_lookup_info.o obj/next_prime.o obj/open_compressed.o obj/pattern.o obj/read.o obj/read_file.o obj/time_used.o obj/write_fork.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-bin/kmer_matching: obj/kmer_matching.o obj/breakup_line.o obj/hash_read_hits.o obj/hist_lib_hash.o obj/kmer_lookup_info.o obj/next_prime.o obj/open_compressed.o obj/pattern.o obj/read.o obj/read_file.o obj/strtostr.o obj/time_used.o obj/write_fork.o
-	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) -lreadline
+# specify version of readline because different installs have varying versions of the
+# "current" version (from 6 to 8), but all have version 5
+bin/kmer_matching: obj/kmer_matching.o obj/breakup_line.o obj/get_name.o obj/hash_read_hits.o obj/hist_lib_hash.o obj/kmer_lookup_info.o obj/next_prime.o obj/open_compressed.o obj/pattern.o obj/read.o obj/read_file.o obj/strtostr.o obj/time_used.o obj/write_fork.o
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) -l:libreadline.so.5
 
 bin/library_stats: obj/find_library.o obj/open_compressed.o obj/get_name.o obj/library_match.o obj/library_read_lib.o obj/library_stats.o obj/parse_read.o obj/pattern.o obj/pretty_print.o obj/read.o obj/read_lib.o obj/read_match.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
@@ -150,20 +152,18 @@ bin/histogram_hashz: obj/open_compressed.o obj/get_name.o obj/hashz.o obj/hist_l
 # some of the libraries require c++11/gnu++11
 
 depend/add_passes.d: add_passes.cc
-	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
-obj/add_passes.o: extra_includes := -I/home/raid2/LINUXOPT/miniconda2a/include
+	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
 obj/add_passes.o: add_passes.cc
-	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -o $@ $<
-bin/add_passes: extra_libs := -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib
+	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include -o $@ $<
 bin/add_passes: obj/add_passes.o obj/open_compressed.o obj/write_fork.o
-	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -lpbbam -lhts
+	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam -lhts
 
 depend/add_quality.d: add_quality.cc
-	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
+	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
 obj/add_quality.o: add_quality.cc
-	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -o $@ $<
+	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include -o $@ $<
 bin/add_quality: obj/add_quality.o obj/open_compressed.o obj/write_fork.o
-	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) -L./lib -Wl,-R/home/raid2/LINUXOPT/htslib-1.7.1/lib -lpbbam -lhts
+	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam -lhts
 
 depend/find_kmers.d: find_kmers.cc
 	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@

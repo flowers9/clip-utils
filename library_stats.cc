@@ -68,8 +68,8 @@ class LibraryData {
 	size_t good_reads;
 	size_t good_pairs;
 	size_t phred_count;
-	LibraryData() : reads(0), good_reads(0), good_pairs(0), phred_count(0) { };
-	~LibraryData() { };
+	LibraryData() : reads(0), good_reads(0), good_pairs(0), phred_count(0) { }
+	~LibraryData() { }
 };
 
 static void collect_library_stats(const std::list<LibraryRead> &read_list) {
