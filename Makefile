@@ -47,13 +47,13 @@ bin/screen_reads: obj/screen_reads.o obj/open_compressed.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 bin/print_hash: obj/print_hash.o obj/hash.o obj/next_prime.o obj/open_compressed.o obj/write_fork.o
-	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) -lz
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 bin/print_hashn: obj/print_hashn.o obj/get_name.o obj/hashn.o obj/hist_lib_hashn.o obj/next_prime.o obj/open_compressed.o obj/pattern.o obj/read.o obj/time_used.o obj/write_fork.o
-	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) -lz
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-bin/copy_dbs: obj/copy_dbs.o obj/open_compressed.o obj/strtostr.o obj/gzstream.o obj/write_fork.o
-	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) -lz
+bin/copy_dbs: obj/copy_dbs.o obj/open_compressed.o obj/strtostr.o obj/write_fork.o
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 bin/screen_pairs: obj/screen_pairs.o obj/get_name.o obj/hashn.o obj/hist_lib_hashn.o obj/next_prime.o obj/open_compressed.o obj/pattern.o obj/read.o obj/read_lib.o obj/time_used.o obj/write_fork.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
