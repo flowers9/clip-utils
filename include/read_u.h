@@ -48,6 +48,7 @@ class Read {
 		add_sequence(__t);
 		add_quality_fastq(__u, __b);
 	}
+	Read(const Read &a) : sequence_(a.sequence_), quality(a.quality), vectors(a.vectors), header(a.header), quality_start(a.quality_start), quality_stop(a.quality_stop), vector_start(a.vector_start), vector_stop(a.vector_stop), phred_count(a.phred_count) { }
 	~Read(void) { }
 	Read operator=(const Read &);
 	Read operator=(const Read *);

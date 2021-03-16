@@ -124,6 +124,7 @@ static void get_opts(int argc, char **argv) {
 		switch (c) {
 		    case 'h':
 			print_usage();
+			return;
 		    case 'I':
 			x = strtod(optarg, NULL);
 			if (x < 0 || 1 < x) {

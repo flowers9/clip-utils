@@ -85,12 +85,11 @@ static size_t get_value(std::string s) {
 	} else if (i + 1 == s.length()) {
 		switch (s[i]) {
 		    case 'g':
-			x *= 1024;
+			return x << 30;
 		    case 'm':
-			x *= 1024;
+			return x << 20;
 		    case 'k':
-			x *= 1024;
-			return x;
+			return x << 10;
 		    default:
 			return 0;
 		}

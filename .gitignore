@@ -3,3 +3,4 @@ tests
 tmp
 depend
 orig
+perl_prototypes

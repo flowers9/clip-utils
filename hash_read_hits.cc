@@ -8,6 +8,7 @@
 #include "open_compressed.h"	// pfread()
 #include "write_fork.h"	// pfwrite()
 #include <cassert>	// assert()
+#include <fstream>	// ofstream
 #include <iostream>	// cout
 #include <limits.h>	// UINT64_MAX
 #include <map>		// map<>
@@ -211,7 +212,7 @@ void hash_read_hits::restore(const int fd) {
 }
 
 // for debugging - print entire hash
-void hash_read_hits::print_hash(const KmerLookupInfo &kmers) const {
+void hash_read_hits::hash_debug_print(const KmerLookupInfo &kmers) const {
 	offset_type i(0);
 	for (; i != modulus; ++i) {
 		if (key_list[i] != INVALID_KEY) {
@@ -230,4 +231,34 @@ void hash_read_hits::print_hash(const KmerLookupInfo &kmers) const {
 			}
 		}
 	}
+}
+
+void hash_read_hits::print_hash(const std::string &file) const {
+	std::ofstream fout(file.c_str());
+	if (!fout.is_open()) {
+		std::cout << "Error: could not open " << file << '\n';
+		return;
+	}
+	std::map<hash_read_hits::value_type, unsigned long> counts;
+	offset_type i(0);
+	for (; i != modulus; ++i) {
+		if (key_list[i] != INVALID_KEY) {
+			value_type n(value_list[i]);
+			if (n == max_small_value) {
+				// use find() to avoid inserting a value into value_map
+				const std::map<offset_type, value_type>::const_iterator a(value_map.find(i));
+				if (a != value_map.end()) {
+					n += a->second;
+				}
+			}
+			++counts[n];
+		}
+	}
+	std::map<hash::value_type, unsigned long>::const_iterator c(counts.begin());
+	const std::map<hash::value_type, unsigned long>::const_iterator end_c(counts.end());
+	for (; c != end_c; ++c) {
+		fout << c->first << ' ' << c->second << '\n';
+		
+	}
+	fout.close();
 }

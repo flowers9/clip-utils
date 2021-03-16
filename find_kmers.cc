@@ -2,7 +2,6 @@
 #include "hashp.h"	// hashp
 #include "open_compressed.h"	// close_compressed(), open_compressed(), pfgets()
 #include <algorithm>	// move(), sort(), swap()
-#include <assert.h>	// assert()
 #include <condition_variable>	// condition_variable
 #include <exception>	// exception
 #include <getopt.h>	// getopt(), optarg, optind
@@ -171,12 +170,11 @@ static size_t get_value(const std::string s) {
 		size_t x(atol(s.c_str()));
 		switch (s[i]) {
 		    case 'g':
-			x *= 1024;
+			return x << 30;
 		    case 'm':
-			x *= 1024;
+			return x << 20;
 		    case 'k':
-			x *= 1024;
-			return x;
+			return x << 10;
 		    default:
 			return 0;
 		}

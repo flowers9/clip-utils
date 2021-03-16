@@ -6,7 +6,7 @@
 #include "write_fork.h"	// close_fork(), close_fork_wait(), pfputc(), pfputs(), pfwrite(), write_fork()
 #include <algorithm>	// sort()
 #include <ctype.h>	// isspace()
-#include <errno.h>	// errno
+#include <errno.h>	// EEXIST, errno
 #include <exception>	// exception
 #include <fstream>	// ofstream
 #include <getopt.h>	// getopt(), optarg, optind
@@ -18,8 +18,10 @@
 #include <sstream>	// istringstream, ostringstream
 #include <stdio.h>	// EOF, rename()
 #include <stdlib.h>	// system()
+#include <string.h>	// strerror()
 #include <string>	// string
-#include <unistd.h>	// STDOUT_FILENO, unlink()
+#include <sys/stat.h>	// mkdir(), stat(), struct stat
+#include <unistd.h>	// STDOUT_FILENO, rmdir(), unlink()
 #include <utility>	// make_pair(), move(), pair<>
 #include <vector>	// vector<>
 
@@ -379,87 +381,126 @@ static int get_opts(int argc, char **argv, Options &opts) {
 	return 0;
 }
 
+static void get_file_lock(const std::string &file) {
+	const std::string lock_dir(file + ".lock");
+	for (int i(0); i != 60; ++i) {
+		if (mkdir(lock_dir.c_str(), 0) == 0) {
+			return;
+		} else if (errno != EEXIST) {
+			throw LocalException("could not create lock for config file: " + file + ": " + strerror(errno));
+		}
+		sleep(1);
+	}
+	throw LocalException("could not create lock for config file: " + file + ": one minute timeout exceeded");
+}
+
+static void release_file_lock(const std::string &file) {
+	const std::string lock_dir(file + ".lock");
+	if (rmdir(lock_dir.c_str()) == -1) {
+		std::cerr << "Warning: attempt to release lock on config file failed: " << file << ": " << strerror(errno) << '\n';
+	}
+}
+
 static void read_config_file(const Options &opts, Library &library) {
 	std::string config_file(opts.project_path + "/unProcessed/lib.config");
-	int fd(open_compressed(config_file));
-	if (fd == -1) {
+	struct stat buf;
+	if (stat(config_file.c_str(), &buf) == -1) {	// assume file does not exist
 		config_file = opts.project_path + "/CONFIG/lib.config";
-		fd = open_compressed(config_file);
+	}
+	get_file_lock(config_file);
+	try {
+		const int fd(open_compressed(config_file));
 		if (fd == -1) {
 			throw LocalException("could not read configuration file");
 		}
-	}
-	std::string line;
-	while (pfgets(fd, line) != -1) {
-		const size_t i(line.find(opts.library));
-		if (i != static_cast<size_t>(-1) && isspace(line[i + opts.library.size()])) {
-			close_compressed(fd);
-			std::vector<std::string> list;
-			breakup_line(line, list);
-			if (list[4] != "UNPROCESSED") {
-				throw LocalException("library status is not UNPROCESSED");
+		std::string line;
+		while (pfgets(fd, line) != -1) {
+			const size_t i(line.find(opts.library));
+			if (i != std::string::npos && isspace(line[i + opts.library.size()])) {
+				close_compressed(fd);
+				std::vector<std::string> list;
+				breakup_line(line, list);
+				if (list[4] != "UNPROCESSED") {
+					throw LocalException("library status is not UNPROCESSED");
+				}
+				library.set_type(list[1]);
+				if (library.library_type == Library::Types::NEXP || library.library_type == Library::Types::CLRS || library.library_type == Library::Types::LFPE) {
+					library.is_paired = 1;
+				}
+				breakup_line(list[5], library.input_files, ',');
+				std::vector<std::string> list2;
+				breakup_line(list[3], list2, 'x');
+				if (list2.size() != 2) {
+					throw LocalException("read length format incorrect in config file");
+				}
+				size_t library_read_length;
+				std::istringstream(list2[1]) >> library_read_length;
+				library.minimum_read_length = library.is_paired || library_read_length < 250 ? 50 : 75;
+				close_compressed(fd);
+				release_file_lock(config_file);
+				return;
 			}
-			library.set_type(list[1]);
-			if (library.library_type == Library::Types::NEXP || library.library_type == Library::Types::CLRS || library.library_type == Library::Types::LFPE) {
-				library.is_paired = 1;
-			}
-			breakup_line(list[5], library.input_files, ',');
-			std::vector<std::string> list2;
-			breakup_line(list[3], list2, 'x');
-			if (list2.size() != 2) {
-				throw LocalException("read length format incorrect in config file");
-			}
-			size_t library_read_length;
-			std::istringstream(list2[1]) >> library_read_length;
-			library.minimum_read_length = library.is_paired || library_read_length < 250 ? 50 : 75;
-			return;
 		}
+		throw LocalException("could not find library in configuration file");
+	} catch (const std::exception &e) {
+		release_file_lock(config_file);	// make sure lock is removed
+		throw;				// pass it up the chain
 	}
-	close_compressed(fd);
-	throw LocalException("could not find library in configuration file");
 }
 
 static void update_config_file(const Options &opts) {
 	std::string config_file(opts.project_path + "/unProcessed/lib.config");
-	int fd(open_compressed(config_file));
-	if (fd == -1) {
+	struct stat buf;
+	if (stat(config_file.c_str(), &buf) == -1) {	// assume file does not exist
 		config_file = opts.project_path + "/CONFIG/lib.config";
-		fd = open_compressed(config_file);
-		if (fd == -1) {
-			std::cerr << "Warning: could not update configuration file: could not read file\n";
+	}
+	get_file_lock(config_file);
+	try {
+		const int fd_read(open_compressed(config_file));
+		if (fd_read == -1) {
+			release_file_lock(config_file);
+			std::cerr << "Warning: could not update configuration file: " << config_file << ": could not read file\n";
+			return;
 		}
-	}
-	std::string line;
-	std::vector<std::string> lines;
-	while (pfgets(fd, line) != -1) {
-		lines.push_back(line);
-	}
-	close_compressed(fd);
-	std::vector<std::string>::iterator a(lines.begin());
-	const std::vector<std::string>::const_iterator end_a(lines.end());
-	for (; a != end_a; ++a) {
-		const size_t i(a->find(opts.library));
-		if (i != std::string::npos && isspace((*a)[i + 1])) {
-			const size_t j(a->find("UNPROCESSED"));
-			if (j == std::string::npos) {
-				std::cerr << "Warning: library is no longer unprocessed\n";
-				// looks like we're not changing it after all
-				return;
+		std::string line;
+		std::vector<std::string> lines;
+		while (pfgets(fd_read, line) != -1) {
+			lines.push_back(line);
+		}
+		close_compressed(fd_read);
+		std::vector<std::string>::iterator a(lines.begin());
+		const std::vector<std::string>::const_iterator end_a(lines.end());
+		for (; a != end_a; ++a) {
+			const size_t i(a->find(opts.library));
+			if (i != std::string::npos && isspace((*a)[i + opts.library.size()])) {
+				const size_t j(a->find("UNPROCESSED"));
+				if (j == std::string::npos) {
+					release_file_lock(config_file);
+					std::cerr << "Warning: library is no longer unprocessed\n";
+					// looks like we're not changing it after all
+					return;
+				}
+				a->erase(j, 2);
+				break;
 			}
-			a->erase(j, 2);
-			break;
 		}
-	}
-	fd = write_fork(std::list<std::string>(), config_file.c_str());
-	if (fd == -1) {
-		std::cerr << "Warning: could not rewrite configuration file\n";
-	}
-	for (a = lines.begin(); a != end_a; ++a) {
-		if (pfputs(fd, *a) == -1 || pfputc(fd, '\n') == -1) {
-			std::cerr << "Error writing configuration file: " << *a;
+		const int fd_write(write_fork(std::list<std::string>(), config_file.c_str()));
+		if (fd_write == -1) {
+			release_file_lock(config_file);
+			std::cerr << "Warning: could not rewrite configuration file\n";
+			return;
 		}
+		for (a = lines.begin(); a != end_a; ++a) {
+			if (pfputs(fd_write, *a) == -1 || pfputc(fd_write, '\n') == -1) {
+				std::cerr << "Error writing configuration file: " << *a;
+			}
+		}
+		close_fork(fd_write);
+		release_file_lock(config_file);
+	} catch (const std::exception &e) {
+		release_file_lock(config_file);	// make sure lock is removed
+		throw;				// pass it up the chain
 	}
-	close_fork(fd);
 }
 
 static void apply_library_defaults(Options &opts, const Library &library) {
@@ -1507,9 +1548,9 @@ int main(int argc, char **argv) {
 		if (!opts.het_rate.empty()) {
 			find_het_rate(opts, outputs);
 		}
-	} catch (std::exception &e) {
+	} catch (const std::exception &e) {
 		std::cerr << "Error: " << e.what() << "\n";
-		LocalException *x(dynamic_cast<LocalException *>(&e));
+		const LocalException *x(dynamic_cast<const LocalException *>(&e));
 		if (x != NULL && x->show_usage()) {
 			print_usage();
 		}

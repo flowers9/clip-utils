@@ -1,22 +1,22 @@
 #include "breakup_line.h"	// breakup_line()
 #include "get_name.h"	// get_name()
 #include "hash_read_hits.h"	// hash_read_hits::read_type
-#include "hist_lib_hash.h"	// init_mer_constants(), opt_mer_length
+#include "hist_lib_hash.h"	// count_read_hits(), init_mer_constants(), opt_mer_length
 #include "kmer_lookup_info.h"	// KmerLookupInfo
 #include "open_compressed.h"	// close_compressed(), open_compressed()
 #include "write_fork.h"	// close_fork(), pfputc(), pfputs(), write_fork()
-#include <cassert>	// assert()
+#include <ctype.h>	// isspace()
 #include <exception>	// exception
 #include <iostream>	// cerr, cout, fixed
 #include <list>		// list<>
 #include <map>		// map<>
 #include <math.h>	// ceil()
-#include <readline/history.h>	// add_history(), using_history()
+#include <readline/history.h>	// HIST_ENTRY, add_history(), history_set_pos(), remove_history(), using_history(), where_history()
 #include <readline/readline.h>	// readline(), rl_attempted_completion_function, rl_completion_func_t, rl_completion_matches(), rl_readline_name
 #include <sstream>	// istringstream
 #include <stdio.h>	// EOF
 #include <stdlib.h>	// free(), malloc()
-#include <string.h>	// strdup(), strlen(), strncmp()
+#include <string.h>	// memcpy(), strdup(), strlen(), strncmp()
 #include <string>	// string
 #include <unistd.h>	// STDIN_FILENO
 #include <vector>	// vector<>
@@ -38,9 +38,12 @@ class LocalException : public std::exception {
 };
 
 static int in_multiline_search(0);
+static int normalize_by(0);		// 0 = search kmers, 1 = read kmers
 
 static void print_usage() {
-	std::cerr << "usage: kmer_matching <kmer_index_file> [fastq_file]\n";
+	std::cerr <<
+		"usage: kmer_matching <kmer_index_file> [reads_file1 [reads_file2 ... ] ]\n"
+		"    (if reads files are given, they must match the ones given to kmer_matching_setup)\n";
 }
 
 // names are held in KmerLookupInfo, so don't need to duplicate them here
@@ -55,15 +58,13 @@ class Selection {
     public:
 	double match_value_min;
 	hash_read_hits::value_type kmer_hit_max;
+	size_t search_kmers;	// number of kmers in search_sequence
 	std::string search_sequence;
 	std::map<hash_read_hits::read_type, int> read_hits;
 	// kmer_hit_max is unsigned, so -1 should be the max value
-	Selection() : match_value_min(0), kmer_hit_max(-1) { }
+	Selection() : match_value_min(0), kmer_hit_max(-1), search_kmers(0) { }
 	~Selection() { }
 	void print_hits(const KmerLookupInfo &kmers) const {
-		// normalize the match value to search length
-		const double x(search_sequence.size() - opt_mer_length);
-		const int min_match(ceil(match_value_min * x));
 		// make reverse map to we can order output by match value
 		// (we also filter by match value cutoffs at this point)
 		// using list here for quick allocation and low memory usage
@@ -71,7 +72,7 @@ class Selection {
 		std::map<hash_read_hits::read_type, int>::const_iterator a(read_hits.begin());
 		const std::map<hash_read_hits::read_type, int>::const_iterator end_a(read_hits.end());
 		for (; a != end_a; ++a) {
-			if (a->second >= min_match) {
+			if (a->second >= match_value_min * (normalize_by ? kmers.read_kmers(a->first) : search_kmers)) {
 				list[a->second].push_back(a->first);
 			}
 		}
@@ -87,7 +88,7 @@ class Selection {
 			std::list<hash_read_hits::read_type>::const_iterator c(b->second.begin());
 			const std::list<hash_read_hits::read_type>::const_iterator end_c(b->second.end());
 			for (; c != end_c; ++c) {
-				std::cout << kmers.read_name(*c) << " " << (b->first / x) << "\n";
+				std::cout << kmers.read_name(*c) << " " << (double(b->first) / (normalize_by ? kmers.read_kmers(*c) : search_kmers)) << "\n";
 			}
 		}
 		std::cout << "\n";
@@ -140,38 +141,57 @@ static void read_kmer_index(const char * const file, KmerLookupInfo &kmers) {
 	close_compressed(fd);
 }
 
-static void read_fastq(const char * const file, std::vector<RawRead> &reads, const KmerLookupInfo &kmers) {
-	std::cout << "Reading fastq file\n";
-	reads.resize(kmers.read_count());
-	const int fd(open_compressed(file));
-	if (fd == -1) {
-		throw LocalException("could not open " + std::string(file));
-	} else if (fd == STDIN_FILENO) {
-		throw LocalException("can not read fastq file from stdin");
-	}
-	size_t i(0);
+static void read_fasta(const int fd, std::vector<RawRead> &reads, const KmerLookupInfo &kmers, size_t &read) {
+}
+
+static void read_fastq(const int fd, std::vector<RawRead> &reads, const KmerLookupInfo &kmers, size_t &read) {
 	std::string line;
-	for (; pfgets(fd, line) != -1; ++i) {
+	for (; pfgets(fd, line) != -1; ++read) {
 		if (line[0] != '@') {
-			throw LocalException("bad header line in fastq file");
+			throw LocalException("bad header line in reads file: " + line);
 		}
 		const std::string read_name(get_name(line));
-		if (read_name.compare(kmers.read_name(i)) != 0) {
-			throw LocalException("mismatched read names: " + read_name + " != " + kmers.read_name(i));
+		if (read_name.compare(kmers.read_name(read)) != 0) {
+			throw LocalException("mismatched read names: " + read_name + " != " + kmers.read_name(read));
 		}
-		if (pfgets(fd, reads[i].sequence) == -1) {
+		if (pfgets(fd, reads[read].sequence) == -1) {
 			throw LocalException("truncated read: " + line);
 		}
 		if (pfgets(fd, line) == -1) {
-			throw LocalException("truncated read: missing quality header");
+			throw LocalException("truncated read: missing quality header: " + read_name);
 		}
-		if (pfgets(fd, reads[i].quality) == -1) {
-			throw LocalException("truncated read: missing quality");
+		if (pfgets(fd, reads[read].quality) == -1) {
+			throw LocalException("truncated read: missing quality: " + read_name);
 		}
-		assert(reads[i].sequence.size() == reads[i].quality.size());
+		if (reads[read].sequence.size() != reads[read].quality.size()) {
+			throw LocalException("sequence and quality length mismatch: " + read_name);
+		}
 	}
-	close_compressed(fd);
-	assert(i == reads.size());
+}
+
+static void read_reads(const int argc, char ** const argv, std::vector<RawRead> &reads, const KmerLookupInfo &kmers) {
+	std::cout << "Reading fastq file\n";
+	reads.resize(kmers.read_count());
+	size_t read(0);
+	for (int i(0); i != argc; ++i) {
+		const int fd(open_compressed(argv[i]));
+		if (fd == -1) {
+			throw LocalException("could not open " + std::string(argv[i]));
+		} else if (fd == STDIN_FILENO) {
+			throw LocalException("can not read reads from stdin");
+		}
+		char c;
+		if (pfpeek(fd, &c, 1) == 1 && c == '@') {
+			read_fastq(fd, reads, kmers, read);
+		} else {
+			read_fasta(fd, reads, kmers, read);
+		}
+		close_compressed(fd);
+	}
+	if (read != reads.size()) {
+		throw LocalException("read count does not match kmer index");
+	}
+
 }
 
 static void help_function(const std::vector<std::string> &list, const KmerLookupInfo &kmers, Selection &selection, const std::vector<RawRead> &reads) {
@@ -180,14 +200,16 @@ static void help_function(const std::vector<std::string> &list, const KmerLookup
 	(void)selection;
 	(void)reads;
 	std::cout <<
+		"dump_histogram ##       write histogram counts to given file\n"
 		"help                    this text\n"
-		"quit                    quit program\n"
 		"msearch ##              multi-line search index for matches against given sequence\n"
 		"                        (following lines continue sequence until blank line)\n"
+		"quit                    quit program\n"
 		"search ##               search index for matches against given sequence\n"
 		"set kmer_hit_max ##     set maximum hit count for kmers\n"
 		"                        (kmers with more matches than this will be ignored)\n"
-		"set match_value_min ##  set minimum match value\n"
+		"set match_value_min ##  set minimum match value [0]\n"
+		"set normalization ##    normalize match value by search kmers (0) or read kmers (1) [0]\n"
 		"show                    show current cutoffs\n"
 		"write ##                write current search results to given file\n";
 }
@@ -197,16 +219,17 @@ static void search_function(const std::vector<std::string> &list, const KmerLook
 	if (list.size() > 2) {
 		std::cout << "Error: search takes one parameter (the sequence to match against)\n";
 		return;
+	} else if (list.size() == 1 || list[1].empty()) {
+		// redo last search
 	// +1 as opt_mer_length is one less than the set mer length
-	} else if (list.size() == 2 && list[1].size() < opt_mer_length + 1) {
+	} else if (list[1].size() < opt_mer_length + 1) {
 		std::cout << "Error: search sequence is too short; need to be at least " << (opt_mer_length + 1) << " basepairs long\n";
 		return;
-	}
-	if (list.size() == 2 && !list[1].empty()) {
+	} else {
 		selection.search_sequence = list[1];
 	}
 	selection.read_hits.clear();
-	count_read_hits(selection.search_sequence, kmers, selection.read_hits, selection.kmer_hit_max);
+	selection.search_kmers = count_read_hits(selection.search_sequence, kmers, selection.read_hits, selection.kmer_hit_max);
 	if (selection.read_hits.empty()) {
 		std::cout << "No matching reads found\n";
 	} else {
@@ -276,6 +299,14 @@ static void set_function(const std::vector<std::string> &list, const KmerLookupI
 		std::istringstream(list[2]) >> selection.match_value_min;
 	} else if (list[1].compare("kmer_hit_max") == 0) {
 		std::istringstream(list[2]) >> selection.kmer_hit_max;
+	} else if (list[1].compare("normalization") == 0) {
+		int i;
+		std::istringstream(list[2]) >> i;
+		if (i == 0 || i == 1) {
+			normalize_by = i;
+		} else {
+			std::cout << "Error: only valid values for set normalization are 0 (by search kmers) or 1 (by read kmers)\n";
+		}
 	} else {
 		std::cout << "Error: you can only set match_value_min and kmer_hit_max\n";
 	}
@@ -286,16 +317,27 @@ static void show_function(const std::vector<std::string> &list, const KmerLookup
 	(void)kmers;
 	(void)reads;
 	std::cout << "match_value_min " << selection.match_value_min << "\n" <<
-		"kmer_hit_max " << selection.kmer_hit_max << "\n\n";
+		"kmer_hit_max " << selection.kmer_hit_max <<
+		"normalization " << normalize_by << "\n\n";
 }
 
 static void write_function(const std::vector<std::string> &list, const KmerLookupInfo &kmers, Selection &selection, const std::vector<RawRead> &reads) {
-	if (list.size() != 2) {
+	if (list.size() != 2 || list[1].empty()) {
 		std::cout << "Error: write only takes one parameter (the filename to write to)\n";
 		return;
 	}
 	const size_t hits(selection.write_hits(kmers, list[1], reads));
 	std::cout << hits << " reads written to " << list[1] << '\n';
+}
+
+static void dump_histogram_function(const std::vector<std::string> &list, const KmerLookupInfo &kmers, Selection &selection, const std::vector<RawRead> &reads) {
+	(void)reads;
+	(void)selection;
+	if (list.size() != 2 || list[1].empty()) {
+		std::cout << "Error: dump_histopgram only takes one parameter (the filename to write to)\n";
+		return;
+	}
+	kmers.kmer_hash.print_hash(list[1]);
 }
 
 struct ActionType {
@@ -304,7 +346,7 @@ struct ActionType {
 };
 
 // actions ordered by likelihood of coming up, with most common ones first
-static ActionType actions[] = {
+static const ActionType actions[] = {
 	{ "search", search_function },
 	{ "msearch", msearch_function },
 	{ "set", set_function },
@@ -314,9 +356,17 @@ static ActionType actions[] = {
 	{ "help", help_function },
 	{ "exit", 0 },
 	{ "quit", 0 },
+	{ "dump_histogram", dump_histogram_function },
+};
+
+static const char * const set_completions[] = {
+	"kmer_hit_max",
+	"match_value_min",
+	"normalization",
 };
 
 static const size_t actions_size(sizeof(actions) / sizeof(ActionType));
+static const size_t set_completions_size(sizeof(set_completions) / sizeof(char *));
 
 // command completion routines (for use by readline)
 
@@ -338,10 +388,32 @@ static char *command_generator(const char * const text, const int state) {
 	return 0;	// no more matches
 }
 
-// only activate command completion if text is at the start of the line
+static char *set_generator(const char * const text, const int state) {
+	static int list_index, len;
+	// if first pass, initialize
+	if (state == 0) {
+		list_index = 0;
+		len = strlen(text);
+	}
+	// advance to next partial match, if any
+	while (list_index != set_completions_size) {
+		const char * const s(set_completions[list_index++]);
+		if (strncmp(s, text, len) == 0) {
+			return strdup(s);
+		}
+	}
+	return 0;	// no more matches
+}
+
 static char **command_completion(const char * const text, const int start, const int end) {
 	(void)end;	// avoid warning
-	return start == 0 ? rl_completion_matches(text, command_generator) : 0;
+	if (start == 0) {		// commands
+		return rl_completion_matches(text, command_generator);
+	} else if (start == 4) {	// "set" options
+		return rl_completion_matches(text, set_generator);
+	} else {
+		return 0;
+	}
 }
 
 static void user_input_loop(const KmerLookupInfo &kmers, const std::vector<RawRead> &reads) {
@@ -350,7 +422,6 @@ static void user_input_loop(const KmerLookupInfo &kmers, const std::vector<RawRe
 	Selection selection;
 	char *s, *t;	// original line, history expanded line
 	while ((s = readline("kmers> ")) != 0) {
-		list.clear();
 		// do history expansion
 		const int result(history_expand(s, &t));
 		free(s);
@@ -361,9 +432,10 @@ static void user_input_loop(const KmerLookupInfo &kmers, const std::vector<RawRe
 				continue;
 			}
 		}
+		list.clear();
 		breakup_line(t, list);
 		// don't add blank lines to history
-		if (list.empty() || (list.size() == 1 && list[1].empty())) {
+		if (list.empty() || (list.size() == 1 && list[0].empty())) {
 			free(t);
 			// a blank line is the end delimiter for a multiline search
 			if (in_multiline_search) {
@@ -375,7 +447,6 @@ static void user_input_loop(const KmerLookupInfo &kmers, const std::vector<RawRe
 		// add history for bad commands, too, as they might just
 		// be slightly mispelled
 		add_history(t);
-		// XXX  for multiline search, history should be one search command
 		free(t);
 		size_t i(0);
 		for (; i != actions_size; ++i) {
@@ -399,7 +470,7 @@ static void user_input_loop(const KmerLookupInfo &kmers, const std::vector<RawRe
 
 int main(int argc, char **argv) {
 	int had_error(0);
-	if (argc != 2 && argc != 3) {
+	if (argc < 2) {
 		print_usage();
 		return 1;
 	}
@@ -413,8 +484,8 @@ int main(int argc, char **argv) {
 		opt_mer_length = kmers.mer_length();
 		init_mer_constants();
 		std::vector<RawRead> reads;
-		if (argc == 3) {
-			read_fastq(argv[2], reads, kmers);
+		if (argc > 2) {
+			read_reads(argc - 2, argv + 2, reads, kmers);
 		}
 		// prevent switching format based on value of output
 		std::cout << std::fixed;

@@ -18,8 +18,9 @@ LDFLAGS  = $(extra_libs) $(DEBUG)
 
 ifeq ($(OS), SunOS)
 DEBUG += -mcpu=v9 -m64
-CPPFLAGS += -I/apps/include
-LDFLAGS += -R/apps/lib -R/apps/lib/sparcv9
+CXX = /bin/g++
+#CPPFLAGS += -I/apps/include
+#LDFLAGS += -R/apps/lib -R/apps/lib/sparcv9
 endif
 
 ifeq ($(OS), Linux)

@@ -9,6 +9,7 @@
 #include <itoa.h>	// itoa()
 #include <list>		// list<>
 #include <map>		// map<>
+#include <stdint.h>	// uint32_t
 #include <stdio.h>	// fprintf(), stderr
 #include <stdlib.h>	// exit()
 #include <string>	// string
@@ -275,6 +276,7 @@ void add_sequence_mers_index(std::list<Read>::const_iterator a, const std::list<
 		if ((!opt_include.empty() && !opt_include.is_match(a->name())) || opt_exclude.find(a->name()) != opt_exclude.end()) {
 			continue;
 		}
+		uint32_t total_kmers(0);
 		hash::key_type key(0);
 		hash::key_type comp_key(0);
 		const size_t end(a->quality_stop);
@@ -290,11 +292,15 @@ void add_sequence_mers_index(std::list<Read>::const_iterator a, const std::list<
 			key = ((key << 2) & mer_mask) | i;
 			comp_key = (comp_key >> 2) | bp_comp[i];
 			kmers.kmer_hash.add_read(key < comp_key ? key : comp_key, reads_processed);
+			++total_kmers;
 		}
+		kmers.set_kmer_count(total_kmers);
 	}
 }
 
-void count_read_hits(const std::string &seq, const KmerLookupInfo &kmers, std::map<hash_read_hits::read_type, int> &read_hits, const hash_read_hits::value_type kmer_max_hits) {
+// returns the number of searched kmers in seq
+size_t count_read_hits(const std::string &seq, const KmerLookupInfo &kmers, std::map<hash_read_hits::read_type, int> &read_hits, const hash_read_hits::value_type kmer_max_hits) {
+	size_t total_kmers(0);
 	Read a("", seq);
 	hash::key_type key(0);
 	hash::key_type comp_key(0);
@@ -311,7 +317,9 @@ void count_read_hits(const std::string &seq, const KmerLookupInfo &kmers, std::m
 		key = ((key << 2) & mer_mask) | i;
 		comp_key = (comp_key >> 2) | bp_comp[i];
 		kmers.kmer_hash.get_reads(key < comp_key ? key : comp_key, read_hits, kmer_max_hits);
+		++total_kmers;
 	}
+	return total_kmers;
 }
 
 bool add_sequence_mers(std::list<Read>::const_iterator a, std::list<Read>::const_iterator end_a, hash &mer_list, const std::map<std::string, hash::offset_type> &opt_readnames_exclude, size_t total_reads) {

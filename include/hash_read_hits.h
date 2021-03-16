@@ -83,7 +83,8 @@ class hash_read_hits {
 	}
 	void save(int) const;
 	void restore(int);
-	void print_hash(const KmerLookupInfo &) const;
+	void hash_debug_print(const KmerLookupInfo &) const;
+	void print_hash(const std::string &) const;
 };
 
 #endif // !_HASH_READ_HITS_H

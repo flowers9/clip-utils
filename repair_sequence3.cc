@@ -22,9 +22,9 @@
 
 #define FASTA_WIDTH 50
 
-static bool opt_cleanup, opt_pair_match, opt_indel, opt_report;
+static bool opt_cleanup, opt_pair_match, opt_report;
 static double opt_overlap_cutoff;
-static int fd_log, opt_abort, opt_change, opt_confirm, opt_length_cutoff;
+static int fd_log, opt_abort, opt_change, opt_confirm, opt_indel, opt_length_cutoff;
 static std::map<std::string, bool> opt_exclude;
 static std::string opt_strip_trace;
 

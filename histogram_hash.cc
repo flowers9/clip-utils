@@ -307,12 +307,11 @@ static size_t get_value(const std::string s) {
 		size_t x(atol(s.c_str()));
 		switch (s[i]) {
 		    case 'g':
-			x *= 1024;
+			return x << 30;
 		    case 'm':
-			x *= 1024;
+			return x << 20;
 		    case 'k':
-			x *= 1024;
-			return x;
+			return x << 10;
 		    default:
 			return 0;
 		}

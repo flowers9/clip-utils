@@ -1,0 +1,170 @@
+========
+Overview
+========
+
+kmer_matching and its associated program, kmer_matching_setup, are a
+pair of programs intended to allow fast matching queries of any sequence
+desired against a body of reads.  kmer_matching_setup takes a set of
+reads and creates a kmer index of them, which is then saved to disk
+(this step takes a fair bit of time).  kmer_matching then reads in
+this index and allows the user to runs searches against it, spitting
+out which reads have matching kmers with the sequence in question,
+and writing out the reads to new files.
+
+===================
+kmer_matching_setup
+===================
+
+kmer_matching_setup accepts many parameters, mostly various methods to
+filter out what reads or what parts of reads will be included in the
+index.  However, the most important options are -m ##, which specifies
+the length of kmers to index, and -z ##, which specifies the upper limit
+on the number of kmers that can be index.  If that limit is too low,
+indexing will fail.
+
+Index size will of course vary by the amount of unique sequence present
+in the collection of reads, as well as by the size of the total read
+sequence.  For a couple of test cases I ran, one involved a 36gb fastq
+file with ~900k reads, which had 1054mb unique 24-mers, and another 31gb
+fastq file with ~900k reads, which had 1002mb unique 24-mers.
+
+If you're not certain, kmer_matching_setup will spit out the number
+of currently indexed kmers every 10 minutes as it runs, as well as the
+number of reads it's indexed.  If it dies, you can use the progression
+(entries/read) at the end of the output to approximate the total
+index size needed, based on the number of reads it failed to index.
+I'd suggest aiming for 110% of that number, as the program will slow
+down as the index gets close to full (in addition to allowing for a bit
+of error margin in your approximation).
+
+Note on input sources: kmer_matching_setup reads the file(s) twice,
+which means it cannot be given piped input.  You can specify compressed
+files, though, as it will spawn decompression processes on its own
+(it can handle gzip and bzip2).
+
+Note on memory usage: the initial pass will require 9 bytes times the
+upper limit on kmers (so a 2gb index size will eat 18gb of memory).
+The second pass requires that, plus 14.5 bytes per actual unique kmer,
+plus 4 bytes per kmer.  For the test cases above, this ran to over 100gb.
+
+Note on disk usage: The 14.5 bytes per actual unique kmer, plus 4 bytes
+per kmer is also the size of the output file.
+
+Suggested practice: if you're got cpus to spare, pipe the output from
+kmer_matching_setup through pbzip2, as (with enough threads) this won't
+slow down writing (or later reading back, and might even speed it up)
+and will cut disk usage.
+
+=============
+kmer_matching
+=============
+
+Once you have the index, using it is straightforward.  kmer_matching takes
+the index and (optionally) the original file(s) (if you have more than
+one original read file, make sure to list them in the same order as you
+did for kmer_matching_setup).  It takes a while to start up, as it has
+to read the entire index into memory (plus the read files, if given);
+this took 10-20 minutes for my test cases, although your mileage will
+vary significantly based on the speed of your filesystem.
+
+Note on input sources: kmer_matching only reads the files once, so it's
+fine to pipe them.  In fact, if you used pbzip2 to compress any files
+(and want to use it to uncompress them), or if you're specifying multiple
+read files, it's required.  Also, at the moment kmer_matching will only
+accept read files in fastq format (kmer_matching_setup accepts either
+fastq or fasta format).
+
+Note on memory usage: the entire index file (and read files, if given)
+are read into memory, so you'll need the size of the uncompressed index
+file and read files (if any) in available memory.
+
+Once the program had loaded everything, it offers a simple command line.
+This is implemented through gnu's readline library, and offers basic
+command completion and history functions.  "help" will return a list of
+commands.  Generally, you'll use "search <target sequence>", which will
+return a list of matching read and the fraction of search kmers matched
+by each read, sorted by that fraction.  You can use "set match_value_min
+##" to set a lower limit (very useful when searching sequence much larger
+than the kmer length).
+
+The fraction can be higher than 1, meaning that the read in question
+had multiple instances of search sequence kmer(s).  If you search
+on particularly repetitive kmers, this may be much higher than 1.
+Should this be a problem, you can "set kmer_hit_max ##" to try and remove
+highly repetitive kmers from the matching process (the proper value to
+use depends greatly on the size and composition of your reads).
+
+Once you have performed a search, you can write out the read list with
+"write <output file>", which will write out either the read list or,
+if you had kmer_match the read files, the entire reads.  The match value
+is not written out, in either case.
+
+Warning: write will overwrite files without warning, so be careful!
+It does support writing gzip or bzip2 files - just give the filename a
+.gz or .bz2 extension.
+
+Cut and paste note: when cutting and pasting sequence, often the
+sequence will span multiple lines.  If this happens, use the "msearch"
+command instead of "search", which will append following lines onto the
+search sequence.  Enter a blank line to mark the end of the sequence
+and perform the search.
+
+=========
+Example 1
+=========
+
+Indexing a 36gb fastq file (with the default kmer size of 24):
+
+	kmer_matching_setup -z 1200m m64017_200624_200248.fastq.gz | pbzip2 -l > kmer.save.bz2
+
+This took ~13 hours to run (the -l just tells pbzip2 to use whatever cores
+are available).  Running matches on it interactively (from a bash shell,
+which supports "<(" syntax):
+
+	kmer_matching <(pbzip2 -dcl kmer.save.bz2)
+
+Here we pipe the pbzipped file back through pbzip to uncompress it quickly.
+This took about 10 minutes to start up and give a command line.  Then doing
+a search:
+
+	kmer> search AGGGTTAACCCAGCTACTGTGACC
+
+("kmer>" is the command prompt for the program)
+and then writing out the results to "test.out":
+
+	kmer> write test.out
+
+=========
+Example 2
+=========
+
+This time, with multiple read files, and loading the read files into kmer_matching:
+
+	kmer_matching_setup -z 2g sample869_1_A01.fastq.gz sample869_2_B01.fastq.gz sample869_3_C01.fastq.gz sample869_4_D01.fastq.gz | pbzip2 -l > kmer.save.bz2
+
+	kmer_matching <(pbzip2 -dcl kmer.save.bz2) <(gzip -dc sample869_1_A01.fastq.gz sample869_2_B01.fastq.gz sample869_3_C01.fastq.gz sample869_4_D01.fastq.gz)
+
+Note that we have to keep the order of the read files the same in both
+commands, as (internal to the programs) the reads are indexed by the
+order they are read in.  If the file order is changed when given to
+kmer_matching an error will be thrown.  An error will also be generated
+if a partial list of read files is given.
+
+=======================
+Use with other programs
+=======================
+
+If you are careful to flush stdin to kmer_matching, it should be possible
+to wrap another program around it, connecting stdin (and likely stdout),
+as each line is processed as its read in.  A simple bash script example
+would be:
+
+	#!/bin/bash
+	cat <<EOF | kmer_matching <(pbzip2 -dcl kmer.save.bz2)
+	search AGGGTTAACCCAGCTACTGTGACC
+	write example.out
+	quit
+	EOF
+
+You could hook up kmer_matching's stdout and make it fully interactive
+with another program, but that would be a much more complex example.
