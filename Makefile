@@ -33,7 +33,7 @@ obj/%.o: %.cc
 
 .PHONY: all
 
-all: bin/clip bin/histogram_hash bin/library_stats bin/mask_repeats_hash bin/qc_stats1 bin/qc_stats2 bin/targets bin/read_stats bin/read_histogram bin/phred_hist bin/parse_output bin/repair_sequence2 bin/compress_blat bin/mask_repeats_hashz bin/histogram_hashz bin/repair_sequence3 bin/mask_repeats_hashn bin/histogram_hashn bin/check_barcodes bin/screen_blat bin/filter_blat bin/parse_output2 bin/screen_pairs bin/arachne_create_xml bin/extract_seq_and_qual bin/split_fasta bin/copy_dbs bin/print_hash bin/print_hashn bin/screen_reads bin/pacbio_read_stats bin/sort_blast bin/add_passes bin/find_kmers bin/add_quality bin/interleave bin/tee bin/chris_prep bin/kmer_matching_setup bin/kmer_matching
+all: bin/clip bin/histogram_hash bin/library_stats bin/mask_repeats_hash bin/qc_stats1 bin/qc_stats2 bin/targets bin/read_stats bin/read_histogram bin/phred_hist bin/parse_output bin/repair_sequence2 bin/compress_blat bin/mask_repeats_hashz bin/histogram_hashz bin/repair_sequence3 bin/mask_repeats_hashn bin/histogram_hashn bin/check_barcodes bin/screen_blat bin/filter_blat bin/parse_output2 bin/screen_pairs bin/arachne_create_xml bin/extract_seq_and_qual bin/split_fasta bin/copy_dbs bin/print_hash bin/print_hashn bin/screen_reads bin/pacbio_read_stats bin/sort_blast bin/add_passes bin/find_kmers bin/add_quality bin/interleave bin/tee bin/chris_prep bin/kmer_matching_setup bin/kmer_matching bin/extract_bam_well_sizes bin/barcode_separation
 
 bin/chris_prep: obj/chris_prep.o obj/breakup_line.o obj/open_compressed.o obj/strtostr.o obj/write_fork.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
@@ -133,9 +133,6 @@ bin/arachne_create_xml: obj/arachne_create_xml.o obj/open_compressed.o obj/parse
 bin/extract_seq_and_qual: obj/extract_seq_and_qual.o obj/breakup_line.o obj/open_compressed.o obj/pattern.o obj/strtostr.o obj/write_fork.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-bin/pacbio_read_stats: obj/pacbio_read_stats.o obj/breakup_line.o obj/open_compressed.o obj/pretty_print.o obj/strtostr.o
-	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
-
 bin/split_fasta: obj/split_fasta.o obj/open_compressed.o obj/write_fork.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
@@ -152,6 +149,16 @@ bin/histogram_hashz: obj/open_compressed.o obj/get_name.o obj/hashz.o obj/hist_l
 
 # some of the libraries require c++11/gnu++11
 
+bin/barcode_separation: obj/barcode_separation.o obj/breakup_line.o obj/open_compressed.o obj/strtostr.o obj/write_fork.o
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+depend/pacbio_read_stats.d: pacbio_read_stats.cc
+	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
+obj/pacbio_read_stats.o: pacbio_read_stats.cc
+	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include -o $@ $<
+bin/pacbio_read_stats: obj/pacbio_read_stats.o obj/breakup_line.o obj/open_compressed.o obj/pretty_print.o obj/strtostr.o
+	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam -lhts
+
 depend/add_passes.d: add_passes.cc
 	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
 obj/add_passes.o: add_passes.cc
@@ -164,6 +171,13 @@ depend/add_quality.d: add_quality.cc
 obj/add_quality.o: add_quality.cc
 	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include -o $@ $<
 bin/add_quality: obj/add_quality.o obj/open_compressed.o obj/write_fork.o
+	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam -lhts
+
+depend/extract_bam_well_sizes.d: extract_bam_well_sizes.cc
+	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
+obj/extract_bam_well_sizes.o: extract_bam_well_sizes.cc
+	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include -o $@ $<
+bin/extract_bam_well_sizes: obj/extract_bam_well_sizes.o
 	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam -lhts
 
 depend/find_kmers.d: find_kmers.cc

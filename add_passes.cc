@@ -11,7 +11,7 @@
 #include <string>	// string
 #include <sys/types.h>	// size_t
 
-static std::string opt_output_file;
+std::string opt_output_file;
 
 static void print_usage(void) {
 	std::cerr <<

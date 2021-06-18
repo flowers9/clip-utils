@@ -1,4 +1,9 @@
+// read a pacbio fasta, fastq, or bam file and create a histogram of
+// the longest subread length for each read (or all subreads with -a)
+
 #include "open_compressed.h"	// close_compressed(), find_suffix(), open_compressed(), pfgets()
+#include "pbbam/BamReader.h"	// BamReader
+#include "pbbam/BamRecord.h"	// BamRecord
 #include "pretty_print.h"	// pretty_print()
 #include "version.h"	// VERSION
 #include <algorithm>	// max(), sort()
@@ -46,7 +51,7 @@ class CurrentState {
     private:
 	std::string seq_id_, last_pacbio_id_;
 	size_t seq_length_, best_fragment_length_;
-	size_t seq_id_offset_;
+	size_t seq_id_offset_;		// the start of the read name in the header
 	std::vector<size_t> read_lengths_;
     private:
 	std::string get_pacbio_read(void) const;
@@ -63,7 +68,7 @@ class CurrentState {
 		seq_id_.clear();
 		last_pacbio_id_.clear();
 	}
-	void set_seq(const std::string &id, const size_t &length, const size_t &id_offset) {
+	void set_seq(const std::string &id, const size_t length, const size_t id_offset) {
 		seq_id_ = id;
 		seq_length_ = length;
 		seq_id_offset_ = id_offset;
@@ -412,6 +417,22 @@ static void read_reads(const std::string &seq_file) {
 	close_compressed(fd);
 }
 
+// like read_reads(), but a bam file instead of a fasta/q one
+static void read_reads_bam(const std::string &bam_file) {
+	// BamReader throws on error
+	PacBio::BAM::BamReader f(bam_file);
+	PacBio::BAM::BamRecord r;
+	while (f.GetNext(r)) {
+		std::string id(r.FullName());
+		current.save_length();
+		const size_t id_offset(get_id_start(id));
+		const size_t start(r.QueryStart());
+		const size_t end(r.QueryEnd());
+		const size_t read_size(start < end ? end - start : start - end);
+		current.set_seq(id, read_size, id_offset);
+	}
+}
+
 class ReadStats {
     public:
 	size_t reads;
@@ -547,7 +568,11 @@ static void process_files(const std::list<std::string> &file_list) {
 	std::list<std::string>::const_iterator a(file_list.begin());
 	const std::list<std::string>::const_iterator end_a(file_list.end());
 	for (; a != end_a; ++a) {
-		read_reads(*a);
+		if (a->length() > 3 && a->substr(a->length() - 4).compare(".bam") == 0) {
+			read_reads_bam(*a);
+		} else {
+			read_reads(*a);
+		}
 	}
 	current.flush_seq();
 	if (opt_full_histogram) {
