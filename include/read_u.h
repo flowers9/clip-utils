@@ -64,6 +64,8 @@ class Read {
 	void mask_by_phred(size_t);
 	size_t count_masked(void) const;
 	void set_quality(unsigned char);
+	// find all X's in read (the mask), and turn into ranges (zero-offset, end non-inclusive)
+	void make_mask_ranges(std::vector<std::pair<size_t, size_t> > &ranges) const;
     private:
 	bool find_strict_window(const std::pair<size_t, size_t> &, int &);
 	void set_strict_endpoints(void);

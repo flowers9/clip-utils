@@ -18,7 +18,8 @@ LDFLAGS  = $(extra_libs) $(DEBUG)
 
 ifeq ($(OS), SunOS)
 DEBUG += -mcpu=v9 -m64
-CXX = /bin/g++
+# for compiling on hero (pants uses /bin/g++)
+CXX = /opt/csw/bin/g++
 #CPPFLAGS += -I/apps/include
 #LDFLAGS += -R/apps/lib -R/apps/lib/sparcv9
 endif

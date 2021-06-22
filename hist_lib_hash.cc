@@ -467,10 +467,10 @@ void count_kmers(const Read &a, const hash &mer_list, size_t &kmers, size_t &r_k
 
 // check to see if position s should be masked
 
-static void check_mask(size_t s, const std::list<int> &window, size_t total, std::string &mask) {
+static void check_mask(size_t s, const std::list<int> &window, const size_t total, std::string &mask) {
 	if (total >= opt_repeat_coverage) {	// add mask
 		mask[s] = 'X';
-	} else if (total < window.size()) {
+	} else if (total < window.size()) {	// do not mask
 	} else if (s > 0 && mask[s - 1] == 'X') { // extend existing mask
 		mask[s] = 'X';
 		return;
@@ -480,7 +480,7 @@ static void check_mask(size_t s, const std::list<int> &window, size_t total, std
 	}
 	// check for conditional end
 	if (s > 0 && mask[s - 1] == 'R') {
-		char c = mask[s];
+		const char c(mask[s]);	// whatever mask we just set (or didn't)
 		do {
 			mask[--s] = c;
 		} while (s != 0 && mask[s - 1] == 'R');
@@ -491,18 +491,18 @@ static void check_mask(size_t s, const std::list<int> &window, size_t total, std
 
 static void create_mask(const Read &a, const hash &mer_list, std::string &mask) {
 	mask.resize(a.size(), ' ');
-	hash::key_type key = 0;
-	hash::key_type comp_key = 0;
-	int total = 0;		// number of repeats in current window
+	hash::key_type key(0);
+	hash::key_type comp_key(0);
+	int total(0);		// number of repeats in current window
 	std::list<int> window;
-	size_t end = a.quality_stop;
+	const size_t end(a.quality_stop);
 	// set key with first n-mer - 1 bases
-	size_t s = preload_keys(a, a.quality_start, end, key, comp_key);
+	size_t s(preload_keys(a, a.quality_start, end, key, comp_key));
 	for (; s < end; ++s) {
-		int i = a.get_seq(s);
+		const int i(a.get_seq(s));
 		if (i == -1) {	// non-base character - advance to
 				// the next proper base and start over
-			size_t t = s - opt_mer_length;
+			size_t t(s - opt_mer_length);
 			// fill out window for short sections
 			window.insert(window.begin(), opt_mer_length + 1 - window.size(), 0);
 			for (; window.size() > 1; ++t) {
@@ -524,8 +524,8 @@ static void create_mask(const Read &a, const hash &mer_list, std::string &mask) 
 			window.pop_front();
 		}
 		// is this repetitive enough to count as a repeat?
-		hash::value_type x = mer_list.value(key < comp_key ? key : comp_key);
-		int j = opt_repeat_threshold <= x && x < opt_repeat_threshold_upper ? 1 : 0;
+		const hash::value_type x(mer_list.value(key < comp_key ? key : comp_key));
+		const int j(opt_repeat_threshold <= x && x < opt_repeat_threshold_upper ? 1 : 0);
 		total += j;
 		window.push_back(j);
 		check_mask(s - opt_mer_length, window, total, mask);

@@ -17,11 +17,14 @@
 #include <string.h>	// strerror()
 #include <string>	// string
 #include <sys/types.h>	// size_t
+#include <utility>	// pair<>
+#include <vector>	// vector<>
 
 static bool opt_aggregate;
 static bool opt_hash_clean;
 static bool opt_limit_printout;
 static bool opt_print_percent_masked;
+static bool opt_print_range;
 static bool opt_split;
 static bool opt_track_dups;
 static bool opt_warnings;
@@ -65,6 +68,18 @@ static void print_unique_sequence(std::list<Read>::iterator a, const std::list<R
 			const size_t x(a->count_masked());
 			if (x != 0) {
 				fprintf(fp, "%s %5.2f%%\n", a->name().c_str(), (double)100 * x / a->size());
+			}
+		} else if (opt_print_range) {
+			std::vector<std::pair<size_t, size_t> > ranges;
+			a->make_mask_ranges(ranges);
+			if (!ranges.empty()) {
+				fprintf(fp, "%s", a->name().c_str());
+				std::vector<std::pair<size_t, size_t> >::const_iterator b(ranges.begin());
+				const std::vector<std::pair<size_t, size_t> >::const_iterator end_b(ranges.end());
+				for (; b != end_b; ++b) {
+					fprintf(fp, " %lu-%lu", b->first, b->second);
+				}
+				fprintf(fp, "\n");
 			}
 		} else {
 			a->print_sequence(fp);
@@ -150,6 +165,7 @@ static void print_usage() {
 		"    -m ## set mer length (from 1-32, defaults to 24)\n"
 		"    -p ## don't touch reads not matching pattern (an extended regex)\n"
 		"    -q    turn off all warnings\n"
+		"    -r    print read:masked_range rather than sequence\n"
 		"    -R    reverse mask before masking (does not affect phred20)\n"
 		"    -s ## suffix for individual files (defaults to .kmermasked)\n"
 		"    -S ## load histogram memory dump from given file\n"
@@ -183,6 +199,7 @@ static void get_opts(int argc, char **argv) {
 	opt_nmers = 200 * 1024 * 1024;
 	opt_phred20_anchor = -1;
 	opt_print_percent_masked = 0;
+	opt_print_range = 0;
 	opt_quality_cutoff = 20;
 	opt_repeat_coverage = 1;
 	opt_repeat_threshold = 20;
@@ -195,7 +212,7 @@ static void get_opts(int argc, char **argv) {
 	opt_track_dups = 0;
 	opt_warnings = 1;
 	int c;
-	while ((c = getopt(argc, argv, "a:B:cdf:FgGhH:ik:l:Lm:p:qRs:S:t:Tu:vVx:Xz:Z")) != EOF) {
+	while ((c = getopt(argc, argv, "a:B:cdf:FgGhH:ik:l:Lm:p:qrRs:S:t:Tu:vVx:Xz:Z")) != EOF) {
 		switch (c) {
 		    case 'a':
 			std::istringstream(optarg) >> opt_phred20_anchor;
@@ -269,6 +286,9 @@ static void get_opts(int argc, char **argv) {
 			break;
 		    case 'q':
 			opt_warnings = 0;
+			break;
+		    case 'r':
+			opt_print_range = 1;
 			break;
 		    case 'R':
 			opt_reverse_mask = 1;
@@ -365,6 +385,10 @@ static void get_opts(int argc, char **argv) {
 		} else {
 			std::cerr << "Error: -G and -H options cannot both be specified\n";
 		}
+		exit(1);
+	}
+	if (opt_print_percent_masked && opt_print_range) {
+		std::cerr << "Error: -F and -r options cannot both be specified\n";
 		exit(1);
 	}
 	if (opt_limit_printout && opt_exclude.empty()) {

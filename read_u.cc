@@ -672,11 +672,29 @@ size_t Read::count_quality(const std::pair<size_t, size_t> &a) const {
 }
 
 size_t Read::count_masked() const {
-	size_t i, n;
-	for (i = n = 0; i != sequence_.size(); ++i) {
+	size_t i(0), n(0);
+	for (; i != sequence_.size(); ++i) {
 		if (sequence_[i] == 'X') {
 			++n;
 		}
 	}
 	return n;
+}
+
+void Read::make_mask_ranges(std::vector<std::pair<size_t, size_t> > &ranges) const {
+	size_t i(-1);	// start at -1 so we can put a ++i at the start of the loop
+	for (;;) {
+		// find start of mask
+		for (++i; i != sequence_.size() && sequence_[i] != 'X'; ++i) { }
+		if (i == sequence_.size()) {
+			break;
+		}
+		const size_t start(i);
+		// find end of mask
+		for (++i; i != sequence_.size() && sequence_[i] == 'X'; ++i) { }
+		ranges.push_back(std::make_pair(start, i));
+		if (i == sequence_.size()) {
+			break;
+		}
+	}
 }
