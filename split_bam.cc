@@ -10,24 +10,15 @@
 #include <vector>	// vector<>
 
 // this takes a subreads.bam and an uncompressed ccs.fastq file and splits
-// them into N parts, also converting the fastq to a fasta; this reads
-// the entire fastq (well, header and sequence) into memory to prevent
+// them into N parts, also converting the fastq to fasta; this reads the
+// entire fastq (well, header and sequence) into memory to prevent the
 // need for rereading (you can pipe a compressed file to it, for example),
-// so a touch memory intensive
+// so a touch memory intensive (~32gb on a 25gb fastq.gz file)
 
-#define CHUNKS 64
+// this also screens the bam file as it splits it, filtering out any
+// subreads from holes that aren't present in the fastq file
 
-// appends input stream up to \n to end of string
-static int get_line(std::istream &f, std::string &output) {
-	char c;
-	while (f.get(c)) {
-		output += c;
-		if (c == '\n') {
-			return 0;
-		}
-	}
-	return -1;
-}
+static unsigned int opt_chunks(64);
 
 static int read_fastq(const std::string &ccs_fastq, std::vector<std::string> &reads) {
 	const std::streamsize max(std::numeric_limits<std::streamsize>::max());
@@ -39,22 +30,29 @@ static int read_fastq(const std::string &ccs_fastq, std::vector<std::string> &re
 		std::cerr << "could not open file: " << ccs_fastq << "\n";
 		return -1;
 	}
+	// to prevent excess memory allocation, use buffer to read in data and then
+	// copy to vector (cost is an extra copy, but we do use a lot of memory)
+	std::string header, seq;
 	for (;;) {
-		// we'll read directly into the string to avoid extra copying
-		reads.push_back(std::string());
-		if (get_line(f, reads.back())) {	// get header
-			if (f.eof()) {
-				reads.pop_back();
-				break;
+		if (!std::getline(f, header)) {		// get header
+			if (f.eof()) {			// done reading
+				return 0;
 			}
 			std::cerr << "failed to read header: " << reads.size() << "\n";
 			return -1;
 		}
-		reads.back()[0] = '>';			// replace leading @ with >
-		if (get_line(f, reads.back())) {	// append sequence
+		header[0] = '>';			// replace leading @ with >
+		if (!std::getline(f, seq)) {		// get sequence
 			std::cerr << "failed to read sequence: " << reads.back();
 			return -1;
 		}
+		reads.push_back(std::string());
+		std::string &s(reads.back());
+		s.reserve(header.size() + seq.size() + 2);
+		s = header;
+		s += '\n';
+		s += seq;
+		s += '\n';
 		if (!f.ignore(max, '\n')) {		// skip quality header
 			std::cerr << "failed to ignore quality header: " << reads.back();
 			return -1;
@@ -64,27 +62,24 @@ static int read_fastq(const std::string &ccs_fastq, std::vector<std::string> &re
 			return -1;
 		}
 	}
-	return 0;
 }
 
 static int32_t hole_number(const std::string &header) {
-	const size_t i(header.find('/'));
-	size_t j(header.find('/', i + 1));
+	size_t i(header.find('/') + 1);
+	const size_t j(header.find('/', i));
 	int32_t k(0);
-	for (--j; i < j; --j) {
-		k = k * 10 + header[j] - '0';
+	for (; i < j; ++i) {
+		k = k * 10 + header[i] - '0';
 	}
 	return k;
 }
 
 static int write_fastas(const std::vector<std::string> &reads, std::vector<int32_t> &holes, std::vector<int32_t> &cutoffs) {
-	holes.reserve(reads.size());
-	cutoffs.reserve(CHUNKS);
-	const size_t base_bin_size(reads.size() / CHUNKS);
-	int remainder(reads.size() % CHUNKS);
+	const size_t base_bin_size(reads.size() / opt_chunks);
+	unsigned int remainder(reads.size() % opt_chunks);
 	std::ostringstream x;
 	std::vector<std::string>::const_iterator a(reads.begin());
-	for (int i(0); i < CHUNKS; ++i) {
+	for (unsigned int i(0); i < opt_chunks; ++i) {
 		x.str("");
 		x << "ccs." << i << ".fasta";
 		std::ofstream f(x.str());
@@ -110,51 +105,57 @@ static int write_fastas(const std::vector<std::string> &reads, std::vector<int32
 	return 0;
 }
 
+static int split_ccs(const char * const ccs_file, std::vector<int32_t> &holes, std::vector<int32_t> &cutoffs) {
+	std::vector<std::string> reads;
+	if (read_fastq(ccs_file, reads)) {
+		std::cerr << "error reading fastq file\n";
+		return -1;
+	}
+	if (reads.size() < opt_chunks) {
+		opt_chunks = reads.size();
+	}
+	holes.reserve(reads.size());
+	cutoffs.reserve(opt_chunks);
+	if (write_fastas(reads, holes, cutoffs)) {
+		std::cerr << "error splitting fastq into fastas\n";
+		return -1;
+	}
+	return 0;
+}
+
 int main(const int argc, const char ** const argv) {
 	if (argc != 3 || !*argv[1] || !*argv[2]) {
 		std::cerr << "usage: split_ccs_bam <subreads.bam> <ccs.fastq>\n";
 		return 1;
 	}
 	std::vector<int32_t> holes, cutoffs;
-	{	// allow reads to fall out of scope to recover memory
-		std::vector<std::string> reads;
-		if (read_fastq(argv[2], reads)) {
-			std::cerr << "error reading fastq file\n";
-			return 1;
-		}
-		if (reads.size() < CHUNKS) {
-			std::cerr << "too few reads to split: " << reads.size() << "\n";
-			return 1;
-		}
-		if (write_fastas(reads, holes, cutoffs)) {
-			std::cerr << "error splitting fastq into fastas\n";
-			return 1;
-		}
+	if (split_ccs(argv[2], holes, cutoffs)) {
+		return 1;
 	}
 	PacBio::BAM::BamReader f_in(argv[1]);
 	PacBio::BAM::BamRecord r;
 	std::ostringstream x;
 	std::vector<int32_t>::const_iterator a(holes.begin());
-	for (int i(0); i < CHUNKS; ++i) {
-		const int32_t &cutoff(cutoffs[i]);
+	const std::vector<int32_t>::const_iterator end_a(holes.end());
+	if (!f_in.GetNext(r)) {
+		std::cerr << "error: empty bam file\n";
+		return 1;
+	}
+	for (unsigned int i(0); i < opt_chunks; ++i) {
+		const int32_t cutoff(cutoffs[i]);
 		x.str("");
 		x << "subreads." << i << ".bam";
 		PacBio::BAM::BamWriter f_out(x.str(), f_in.Header());
-		if (i != 0 && r.HoleNumber() == *a) {
-			f_out.Write(r);
-		}
-		for (;;) {
+		// print out subreads hole by hole
+		do {
 			// skip holes not in ccs
-			while (f_in.GetNext(r) && r.HoleNumber() < *a) { }
+			while (r.HoleNumber() < *a && f_in.GetNext(r)) { }
 			// write out all subreads for hole
 			do {
 				f_out.Write(r);
-			while (f_in.GetNext(r) && r.HoleNumber() == *a);
-			// check against holes.end() first, as r may be invalid
-			if (++a == holes.end() || cutoff < r.HoleNumber()) {
-				break;
-			}
-		}
+			} while (f_in.GetNext(r) && r.HoleNumber() == *a);
+			// check a first, as r may be invalid
+		} while (++a != end_a && r.HoleNumber() <= cutoff);
 	}
 	return 0;
 }
