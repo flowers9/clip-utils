@@ -40,16 +40,15 @@ static std::vector<std::string> output_buffer;
 
 static void print_usage() {
 	std::cerr <<
-		"usage: split_fasta [opts] -o output_file [input_file1] [input_file2] ...\n" <<
-		"\t-i ##\tfile of read names to extract (may be specified multiple times;\n" <<
-		"\t\tglobs will be expanded and treated as multiple -i arguments)\n" <<
-
-		"\t-o ##\toutput file name suffix - this is appended to the name of the -i\n" <<
-		"\t\tfiles to get the corresponding output file; if a compression\n" <<
-		"\t\tsuffix is given, the output will be appropriately compressed\n" <<
-		"\t-t\tstrip first part of trace id from query reads\n" <<
-		"\n" <<
-		"\tif no input files are specified, stdin is read\n";
+		"usage: split_fasta [opts] -o output_file [input_file1] [input_file2] ...\n"
+		"    -i ##  file of read names to extract (may be specified multiple times;\n"
+		"           globs will be expanded and treated as multiple -i arguments)\n"
+		"    -o ##  output file name suffix - this is appended to the name of the -i\n"
+		"           files to get the corresponding output file; if a compression\n"
+		"           suffix is given, the output will be appropriately compressed\n"
+		"    -t     strip first part of trace id from query reads\n"
+		"\n"
+		"    if no input files are specified, stdin is read\n";
 }
 
 static void get_read_lists(const std::list<std::string> &read_files) {

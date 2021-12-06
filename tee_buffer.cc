@@ -135,9 +135,9 @@ class Buffer {
 
 static void print_usage() {
 	std::cerr <<
-		"usage: tee [opts] <file1> [<file2> ...]\n" <<
-		"    -b ##  buffer size [1mb]\n" <<
-		"    -c ##  buffer cycle size [32kb]\n" <<
+		"usage: tee [opts] <file1> [<file2> ...]\n"
+		"    -b ##  buffer size [1mb]\n"
+		"    -c ##  buffer cycle size [32kb]\n"
 		"    -n     don't write to stdout\n";
 }
 
