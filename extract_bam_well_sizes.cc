@@ -82,14 +82,30 @@ static void read_bam(const char * const file, std::map<uint32_t, uint32_t> &well
 				++well_read_size[well_id];
 			}
 		} else {	// using read size (max or total)
+			uint32_t read_size;
 			// in addition to being more correct, faster than Sequence().length()
-			const uint32_t start(bam_record.QueryStart());
-			const uint32_t end(bam_record.QueryEnd());
-			const uint32_t read_size(start < end ? end - start : start - end);
+			// but, not always present for ccs reads
+			if (bam_record.HasQueryStart() && bam_record.HasQueryEnd()) {
+				const uint32_t start(bam_record.QueryStart());
+				const uint32_t end(bam_record.QueryEnd());
+				read_size = start < end ? end - start : start - end;
+			} else {
+				read_size = bam_record.Sequence().length();
+			}
 			if (a == well_read_size.end()) {
-				well_read_size[well_id] = read_size;
+				if (opt_aggregate && bam_record.HasNumPasses()) {
+					well_read_size[well_id] = read_size * bam_record.NumPasses();
+				} else {
+					well_read_size[well_id] = read_size;
+				}
 			} else if (opt_aggregate) {		// total read sizes
-				a->second += read_size;
+				if (bam_record.HasNumPasses()) {
+					// handle aggregating for ccs bams, and safe for
+					// subread bams as passes will equal one
+					a->second += read_size * bam_record.NumPasses();
+				} else {
+					a->second += read_size;
+				}
 			} else if (a->second < read_size) {	// update maximum read size
 				a->second = read_size;
 			}
