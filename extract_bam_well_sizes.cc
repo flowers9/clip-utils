@@ -127,8 +127,10 @@ static void calc_values(const std::map<uint32_t, uint32_t> &well_read_size, uint
 		if (max_col < col) {
 			max_col = col;
 		}
-		x += a->second;
-		x2 += a->second * a->second;
+		// avoid overflow from squaring
+		const double z(a->second);
+		x += z;
+		x2 += z * z;
 	}
 	x /= well_read_size.size();
 	x2 /= well_read_size.size();
