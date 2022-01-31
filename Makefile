@@ -34,7 +34,7 @@ obj/%.o: %.cc
 
 .PHONY: all
 
-all: bin/clip bin/histogram_hash bin/library_stats bin/mask_repeats_hash bin/qc_stats1 bin/qc_stats2 bin/targets bin/read_stats bin/read_histogram bin/phred_hist bin/parse_output bin/repair_sequence2 bin/compress_blat bin/mask_repeats_hashz bin/histogram_hashz bin/repair_sequence3 bin/mask_repeats_hashn bin/histogram_hashn bin/check_barcodes bin/screen_blat bin/filter_blat bin/parse_output2 bin/screen_pairs bin/arachne_create_xml bin/extract_seq_and_qual bin/split_fasta bin/copy_dbs bin/print_hash bin/print_hashn bin/screen_reads bin/pacbio_read_stats bin/sort_blast bin/add_passes bin/find_kmers bin/add_quality bin/interleave bin/tee bin/chris_prep bin/kmer_matching_setup bin/kmer_matching bin/extract_bam_well_sizes bin/barcode_separation bin/filter_bam bin/split_bam
+all: bin/clip bin/histogram_hash bin/library_stats bin/mask_repeats_hash bin/qc_stats1 bin/qc_stats2 bin/targets bin/read_stats bin/read_histogram bin/phred_hist bin/parse_output bin/repair_sequence2 bin/compress_blat bin/mask_repeats_hashz bin/histogram_hashz bin/repair_sequence3 bin/mask_repeats_hashn bin/histogram_hashn bin/check_barcodes bin/screen_blat bin/filter_blat bin/parse_output2 bin/screen_pairs bin/arachne_create_xml bin/extract_seq_and_qual bin/split_fasta bin/copy_dbs bin/print_hash bin/print_hashn bin/screen_reads bin/pacbio_read_stats bin/sort_blast bin/add_passes bin/find_kmers bin/add_quality bin/interleave bin/tee bin/chris_prep bin/kmer_matching_setup bin/kmer_matching bin/extract_bam_well_sizes bin/barcode_separation bin/filter_bam_alignments bin/split_bam bin/filter_bam
 
 bin/chris_prep: obj/chris_prep.o obj/breakup_line.o obj/open_compressed.o obj/strtostr.o obj/write_fork.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
@@ -164,7 +164,14 @@ depend/filter_bam.d: filter_bam.cc
 	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
 obj/filter_bam.o: filter_bam.cc
 	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include -o $@ $<
-bin/filter_bam: obj/filter_bam.o
+bin/filter_bam: obj/filter_bam.o obj/open_compressed.o
+	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam
+
+depend/filter_bam_alignments.d: filter_bam_alignments.cc
+	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
+obj/filter_bam_alignments.o: filter_bam_alignments.cc
+	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include -o $@ $<
+bin/filter_bam_alignments: obj/filter_bam_alignments.o
 	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam
 
 depend/pacbio_read_stats.d: pacbio_read_stats.cc
