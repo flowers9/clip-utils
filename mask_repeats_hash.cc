@@ -420,6 +420,7 @@ int main(int argc, char **argv) {
 	}
 	if (opt_histogram_restore != -1) {
 		mer_list.init_from_file(opt_histogram_restore);
+		close_compressed(opt_histogram_restore);
 	} else {
 		mer_list.init(opt_nmers);
 	}

@@ -10,29 +10,53 @@
 #include <stdlib.h>	// exit()
 #include <string>	// string
 #include <sys/types.h>	// size_t
+#include <vector>	// vector<>
 
-std::string opt_output_file;
+static std::string opt_output_file;
+static int opt_bam_list(0);
 
 static void print_usage(void) {
 	std::cerr <<
-		"usage: add_passes [-o output] <ccs_bam_file> <fasta/fastq>\n" <<
+		"usage: add_passes [-o output] <ccs_bam_file> <fasta/fastq>\n"
+		"    -b    bam file is interpreted as a list of bam files\n"
 		"    -o ## file to store output in [stdout]\n";
 	exit(0);
 }
 
+static void read_bam_list(const std::string &file, std::vector<std::string> &ccs_bam_list) {
+	int fd(open_compressed(file));
+	if (fd == -1) {
+		std::cerr << "Error: open: " << file << "\n";
+		exit(1);
+	}
+	std::string line;
+	while (pfgets(fd, line) != -1) {
+		ccs_bam_list.push_back(line);
+	}
+	close_compressed(fd);
+}
+
 static void get_passes(const std::string ccs_bam, std::map<std::string, int> &read_passes) {
-	// BamReader throws on error
-	PacBio::BAM::BamReader f(ccs_bam);
-	PacBio::BAM::BamRecord r;
-	while (f.GetNext(r)) {
-		std::string s(r.FullName());
-		// strip /ccs from end
-		if (s.length() > 3 && s.substr(s.length() - 4).compare("/ccs") == 0) {
-			s = s.substr(0, s.length() - 4);
-		} else {
-			std::cerr << "Warning: bad read name: " << s << "\n";
+	std::vector<std::string> ccs_bam_list;
+	if (opt_bam_list) {
+		read_bam_list(ccs_bam, ccs_bam_list);
+	} else {
+		ccs_bam_list.push_back(ccs_bam);
+	}
+	for (const auto &a: ccs_bam_list) {
+		// BamReader throws on error
+		PacBio::BAM::BamReader f(a);
+		PacBio::BAM::BamRecord r;
+		while (f.GetNext(r)) {
+			std::string s(r.FullName());
+			// strip /ccs from end
+			if (s.length() > 3 && s.substr(s.length() - 4).compare("/ccs") == 0) {
+				s = s.substr(0, s.length() - 4);
+			} else {
+				std::cerr << "Warning: bad read name: " << a << ": " << s << "\n";
+			}
+			read_passes[s] = r.NumPasses();
 		}
-		read_passes[s] = r.NumPasses();
 	}
 }
 
@@ -70,8 +94,7 @@ static void process_fastx(const std::string fastx, const std::map<std::string, i
 		std::cerr << "Error: open: " << fastx << "\n";
 		exit(1);
 	}
-	std::list<std::string> fork_args(1, "gzip");
-	int fd_out(write_fork(fork_args, opt_output_file));
+	int fd_out(write_fork(opt_output_file));
 	if (fd_out == -1) {
 		std::cerr << "Error: could not write output file: " << opt_output_file << "\n";
 		close_compressed(fd_in);
@@ -106,8 +129,11 @@ static void process_fastx(const std::string fastx, const std::map<std::string, i
 static void get_opts(int argc, char **argv) {
 	opt_output_file = "-";
 	int c;
-	while ((c = getopt(argc, argv, "o:")) != EOF) {
+	while ((c = getopt(argc, argv, "bo:")) != EOF) {
 		switch (c) {
+		    case 'b':
+			opt_bam_list = 1;
+			break;
 		    case 'o':
 			opt_output_file = optarg;
 			break;

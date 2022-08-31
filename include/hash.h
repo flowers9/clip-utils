@@ -77,6 +77,7 @@ class hash {
 	bool can_overflow;		// allow values greater than max_small_value
 	int no_space_response;
 	int max_key_size;		// for radix sorting
+    protected:
 	offset_type used_elements;
 	offset_type modulus;
 	offset_type collision_modulus;
@@ -86,19 +87,21 @@ class hash {
 	// alt_list is a two dimensional array (modulus * alt_size) declared
 	// as a single to maintain locality of values to reduce cache misses
 	small_value_type *alt_list;
-	std::string tmp_file_prefix;			// for TMP_FILE response
 	std::map<key_type, value_type> value_map;	// for overflow
 	std::map<key_type, value_type> *alt_map;	// for alt overflows
-	std::list<std::string> state_files;		// for TMP_FILE response
     private:
+	std::string tmp_file_prefix;			// for TMP_FILE response
+	std::list<std::string> state_files;		// for TMP_FILE response
+    protected:
 	std::string boilerplate(void) const;
+	offset_type find_offset(key_type) const;
+    private:
 	offset_type find_empty_offset(key_type) const;
 	void rehash(void);
 	void rehash_alt(void);
 	bool clean_hash(void);
 	offset_type insert_key(offset_type, key_type);
 	offset_type insert_offset(key_type);
-	offset_type find_offset(key_type) const;
 	bool add(key_type, value_type);
 	bool add_alt(key_type, value_type, const value_type []);
 	void shell_sort(offset_type, offset_type);
@@ -110,7 +113,7 @@ class hash {
 	bool get_next_entry(int, key_type &, value_type &, offset_type &) const;
 	void prep_for_readback(offset_type &, std::map<key_type, std::pair<value_type, int> > &);
     public:
-	explicit hash(void) : can_overflow(1), no_space_response(0), max_key_size(sizeof(key_type) * 8), used_elements(0), modulus(0), collision_modulus(0), alt_size(0), key_list(0), value_list(0), alt_list(0), tmp_file_prefix(""), alt_map(0), state_files() { }
+	explicit hash(void) : can_overflow(1), no_space_response(0), max_key_size(sizeof(key_type) * 8), used_elements(0), modulus(0), collision_modulus(0), alt_size(0), key_list(0), value_list(0), alt_list(0), alt_map(0), tmp_file_prefix(""), state_files() { }
 	explicit hash(const offset_type size_in, const offset_type alt_size_in = 0) : can_overflow(1), no_space_response(0), max_key_size(sizeof(key_type) * 8), tmp_file_prefix("") {
 		init(size_in, alt_size_in);
 	}

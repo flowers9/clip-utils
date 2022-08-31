@@ -265,8 +265,7 @@ static void process_fastx(const std::string& read_file, const std::map<std::stri
 		std::cerr << "Error: open: " << read_file << "\n";
 		exit(1);
 	}
-	std::list<std::string> fork_args(1, "gzip");
-	int fd_out(write_fork(fork_args, opt_output_file));
+	int fd_out(write_fork(opt_output_file));
 	if (fd_out == -1) {
 		std::cerr << "Error: could not write output file: " << opt_output_file << "\n";
 		close_compressed(fd_in);
