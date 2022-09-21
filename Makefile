@@ -89,7 +89,7 @@ bin/library_stats: obj/find_library.o obj/open_compressed.o obj/get_name.o obj/l
 bin/mask_repeats_hash: obj/breakup_line.o obj/open_compressed.o obj/get_name.o obj/hash.o obj/hist_lib_hash.o obj/mask_repeats_hash.o obj/next_prime.o obj/pattern.o obj/read.o obj/read_file.o obj/strtostr.o obj/time_used.o obj/write_fork.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-bin/dot_hash: obj/dot_hash.o obj/open_compressed.o obj/hash.o obj/next_prime.o
+bin/dot_hash: obj/dot_hash.o obj/open_compressed.o obj/hash.o obj/next_prime.o obj/write_fork.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 bin/qc_stats1: obj/open_compressed.o obj/get_name.o obj/pattern.o obj/pretty_print.o obj/qc_read.o obj/qc_read_lib.o obj/qc_stats1.o obj/read.o obj/read_lib.o

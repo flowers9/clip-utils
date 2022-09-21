@@ -3,40 +3,40 @@
 #include "version.h"	// VERSION
 #include <getopt.h>	// getopt(), optarg, optind
 #include <iostream>	// cerr, cout
+#include <map>		// map<>
 #include <math.h>	// sqrt()
+#include <mutex>	// lock_guard<>, mutex
 #include <sstream>	// istringstream
 #include <stdlib.h>	// exit()
-#include <string.h>	// memcmp()
+#include <string.h>	// memcmp(), memcpy()
 #include <string>	// string
+#include <thread>	// thread
+#include <vector>	// vector<>
 
-// read in N saved hashes and create dot-products for all crosses
-// XXX - consider a chi-squared type scoring function (sum of squares of the difference)
+// read in N saved hashes and create shared identity stats for all crosses
 
 static int opt_files_to_cutoff;
+static int opt_keep_total_kmer_count;
+static int opt_max_kmer_sharing;
 static int opt_min_kmer_frequency;
 static int opt_screen_shared_kmers;
-static int opt_shared_identity;
+static int opt_threads;
+static std::vector<std::string> opt_reference_list;
 
 // extend hash by adding a few methods
 
 class dhash : public hash {
-    private:
-	double magnitude_;
-	uint64_t total_count_;
-    private:
-	value_type value_from_offset(offset_type) const;
     public:
-	dhash(void) : hash(), magnitude_(0), total_count_(0) { }
-	void init_from_file2(int);		// don't load alts, calculate magnitude
-	double dot_product(const dhash &) const;
-	double shared_identity(const dhash &) const;
+	void init_from_file2(int);		// don't load alts, all values 1
 	void init_for_intersection(const dhash &);
-	void find_intersection(const dhash &);
-	void screen_keys(const dhash &);
-	uint64_t total_count(void) const { return total_count_; }
+	void set_intersection(const dhash &);
+	void set_subtraction(const dhash &, value_type = 0);
+	void set_addition(const dhash &);
+	double shared_identity(const dhash &) const;
+	double unshared_identity(const dhash &) const;
 };
 
-// like init_from_file(), but no alt values and calculate magnitude
+// like init_from_file(), but no alt values, and value is compressed to 1
 
 void dhash::init_from_file2(const int fd) {
 	const std::string s(boilerplate());
@@ -66,76 +66,13 @@ void dhash::init_from_file2(const int fd) {
 			if (value_list[i] < opt_min_kmer_frequency) {
 				value_list[i] = 0;
 			} else {
-				total_count_ += value_list[i];
-				magnitude_ += double(value_list[i]) * double(value_list[i]);
+				value_list[i] = 1;
 			}
 		}
 	}
-	// read in overflow map
-	offset_type x;
-	pfread(fd, &x, sizeof(x));
-	for (; x <= 0; --x) {
-		key_type i;
-		value_type j;
-		pfread(fd, &i, sizeof(i));
-		pfread(fd, &j, sizeof(j));
-		value_map[i] = j;
-		total_count_ += j;
-		// have to subtract out 255**2, as we already added it in above
-		magnitude_ += double(j + 255) * double(j + 255) - 65025;
-	}
-	magnitude_ = sqrt(magnitude_);
 }
 
-// relies on INVALID keys having zero value (as set during init_from_from2())
-hash::value_type dhash::value_from_offset(const offset_type i) const {
-	if (value_list[i] != max_small_value) {
-		return value_list[i];
-	} else {
-		// use find() to avoid inserting a value into value_map
-		const std::map<key_type, value_type>::const_iterator a(value_map.find(key_list[i]));
-		if (a == value_map.end()) {
-			return max_small_value;
-		} else {
-			return a->second + max_small_value;
-		}
-	}
-}
-
-double dhash::dot_product(const dhash &h) const {
-	double d(0);
-	for (offset_type i(0); i < modulus; ++i) {
-		const value_type j(value_from_offset(i));
-		if (j) {
-			const value_type k(h.value(key_list[i]));
-			if (k) {
-				d += double(j) * double(k);
-			}
-		}
-	}
-	return d / magnitude_ / h.magnitude_;
-}
-
-// count kmers in common
-double dhash::shared_identity(const dhash &h) const {
-	double d(0);
-	for (offset_type i(0); i < modulus; ++i) {
-		const value_type j(value_from_offset(i));
-		if (j) {
-			const value_type k(h.value(key_list[i]));
-			if (k) {
-				const double x1(double(j) / double(total_count_));
-				const double x2(double(k) / double(h.total_count_));
-				d += x1 < x2 ? x1 : x2;
-			}
-		}
-	}
-	return d;
-}
-
-// prepare hash for finding intersections (copy all values as 1)
-// (relies on INVALID keys having zero value)
-
+// prepare hash for finding intersections
 void dhash::init_for_intersection(const dhash &h) {
 	used_elements = h.used_elements;
 	modulus = h.modulus;
@@ -145,70 +82,97 @@ void dhash::init_for_intersection(const dhash &h) {
 	value_list = new small_value_type[modulus];
 	alt_list = NULL;
 	alt_map = NULL;
-	for (offset_type i(0); i < modulus; ++i) {
-		if (h.value_list[i]) {
-			key_list[i] = h.key_list[i];
-			value_list[i] = 1;
-		} else {
-			key_list[i] = INVALID_KEY;
-			value_list[i] = 0;
-		}
-	}
+	memcpy(key_list, h.key_list, modulus * sizeof(key_type));
+	memcpy(value_list, h.value_list, modulus * sizeof(small_value_type));
 }
 
-// zero any key not shared with h
-void dhash::find_intersection(const dhash &h) {
+// zero any key not in h
+void dhash::set_intersection(const dhash &h) {
 	for (offset_type i(0); i < modulus; ++i) {
 		if (value_list[i] && h.value(key_list[i]) == 0) {
 			// don't set key to INVALID, as that could hork lookups
 			value_list[i] = 0;
+			// --used_elements;	// technically not true, but effectively true
 		}
 	}
 }
 
-// zero any key in h, and recalculate magnitude and total_count
-void dhash::screen_keys(const dhash &h) {
-	total_count_ = 0;
-	magnitude_ = 0;
+// zero any key where h's value is above cutoff
+void dhash::set_subtraction(const dhash &h, const hash::value_type max_value) {
 	for (offset_type i(0); i < modulus; ++i) {
-		if (value_list[i] == 0) {
-		} else if (h.value(key_list[i])) {
+		if (value_list[i] && h.value(key_list[i]) > max_value) {
 			// don't set key to INVALID, as that could hork lookups
-			// don't need to zero value_map
 			value_list[i] = 0;
-		} else {
-			const value_type j(value_from_offset(i));
-			total_count_ += j;
-			magnitude_ += double(j) * double(j);
+			if (!opt_keep_total_kmer_count) {
+				--used_elements;	// technically not true, but effectively true
+			}
 		}
 	}
-	magnitude_ = sqrt(magnitude_);
+}
+
+// increment all values from h
+void dhash::set_addition(const dhash &h) {
+	for (offset_type i(0); i < h.modulus; ++i) {
+		if (h.value_list[i]) {
+			if (!increment(h.key_list[i])) {
+				std::cerr << "Error: ran out of space in hash\n";
+				exit(1);
+			}
+		}
+	}
+}
+
+// count kmers in common
+double dhash::shared_identity(const dhash &h) const {
+	uint64_t d(0);
+	for (offset_type i(0); i < modulus; ++i) {
+		if (value_list[i] && h.value(key_list[i])) {
+			++d;
+		}
+	}
+	return d;
+}
+
+// count kmers shared with only one reference (h is the shared_kmers set)
+double dhash::unshared_identity(const dhash &h) const {
+	uint64_t d(0);
+	for (offset_type i(0); i < modulus; ++i) {
+		if (value_list[i] && h.value(key_list[i]) == 1) {
+			++d;
+		}
+	}
+	return d;
 }
 
 static void print_usage() {
 	std::cerr << "usage: dot_hash saved_hash1 saved_hash2 ...\n"
 		"    -h    print this help\n"
-		"    -d    dot-product [shared-identity]\n"
-		"    -l ## limit cutoffs to first # files [all]\n"
-		"    -m ## min kmer frequency [0]\n"
+		"    -k    when calculating fraction, compare to total unique kmers\n"
+		"    -l ## limit min frequency to first ## files [all]\n"
+		"    -m ## min kmer frequency (only applies to non-references) [0]\n"
+		"    -r    add reference file (may be specified multiple times)\n"
 		"    -s    screen shared kmers\n"
+		"    -t ## threads [1]\n"
+		"    -u ## only count kmers shared with at most ## references [all]\n"
 		"    -V    print version\n";
 	exit(1);
 }
 
-static void get_opts(int argc, char **argv) {
+static void get_opts(const int argc, char * const * argv) {
 	opt_files_to_cutoff = 0;	// zero == all
+	opt_keep_total_kmer_count = 0;
+	opt_max_kmer_sharing = hash::max_small_value;
 	opt_min_kmer_frequency = 0;
 	opt_screen_shared_kmers = 0;
-	opt_shared_identity = 1;
+	opt_threads = 1;
 	int c, x;
-	while ((c = getopt(argc, argv, "dhl:m:sV")) != EOF) {
+	while ((c = getopt(argc, argv, "hkl:m:st:u:V")) != EOF) {
 		switch (c) {
-		    case 'd':
-			opt_shared_identity = 0;
-			break;
 		    case 'h':
 			print_usage();
+			break;
+		    case 'k':
+			opt_keep_total_kmer_count = 1;
 			break;
 		    case 'l':
 			std::istringstream(optarg) >> x;
@@ -220,8 +184,8 @@ static void get_opts(int argc, char **argv) {
 			break;
 		    case 'm':
 			std::istringstream(optarg) >> x;
-			if (x < 0) {
-				std::cerr << "Error: -m requires non-negative value\n";
+			if (x < 1) {
+				std::cerr << "Error: -m requires positive value\n";
 				exit(1);
 			} else if (x > hash::max_small_value) {
 				std::cerr << "Error: -m value too large: " << x << " (max " << (unsigned int)(hash::max_small_value) << ")\n";
@@ -231,6 +195,22 @@ static void get_opts(int argc, char **argv) {
 			break;
 		    case 's':
 			opt_screen_shared_kmers = 1;
+			break;
+		    case 't':
+			std::istringstream(optarg) >> x;
+			if (x < 0) {
+				std::cerr << "Error: -t requires non-negative value\n";
+				exit(1);
+			}
+			opt_threads = x;
+			break;
+		    case 'u':
+			std::istringstream(optarg) >> x;
+			if (x < 1) {
+				std::cerr << "Error: -u requires positive value\n";
+				exit(1);
+			}
+			opt_max_kmer_sharing = x;
 			break;
 		    case 'V':
 			std::cerr << "dot_hash version " << VERSION << "\n";
@@ -242,14 +222,161 @@ static void get_opts(int argc, char **argv) {
 	}
 }
 
-int main(int argc, char ** argv) {
+// declared here so threads can easily use them
+static int hash_count;
+static std::mutex get_next_mutex;
+static std::vector<dhash> mer_list;
+static std::vector<std::vector<double> > results;
+static dhash mer_screen, shared_kmers;
+
+// return next i; returns 0 if done; make sure to initialize i_out to a
+// value other than -1 before starting loop
+
+static int get_next_i(int &i_out) {
+	std::lock_guard<std::mutex> lock(get_next_mutex);
+	static int i(-1);
+	if (i_out == -1) {		// reset count
+		i = -1;
+		return 0;
+	} else if (++i < hash_count) {
+		i_out = i;
+		return 1;
+	} else {
+		i = hash_count;		// prevent wrapping
+		return 0;
+	}
+}
+
+static int skip_upper_matrix(1);
+static int skip_diagonal(0);
+
+// return next [i][j] pairing; returns 0 if done
+static int get_next_pair(int &i_out, int &j_out) {
+	std::lock_guard<std::mutex> lock(get_next_mutex);
+	static int i(0), j(-1);
+	if (++j == i) {
+		if (skip_diagonal) {
+			++j;
+		} else {
+			i_out = i;
+			j_out = j;
+			return 1;
+		}
+	}
+	if (j < (skip_upper_matrix ? i : hash_count)) {
+		i_out = i;
+		j_out = j;
+		return 1;
+	} else if (++i < hash_count) {
+		i_out = i;
+		j_out = j = 0;
+		return 1;
+	} else {
+		i = j = hash_count;	// prevent wrapping
+		return 0;
+	}
+}
+
+static void screen_universal_key(void) {
+	int i(0);
+	while (get_next_i(i)) {
+		mer_list[i].set_subtraction(mer_screen);
+	}
+}
+
+static void screen_universal_keys(void) {
+	std::thread threads[opt_threads];
+	int x(-1);
+	get_next_i(x);		// reset count
+	for (int i(0); i < opt_threads; ++i) {
+		threads[i] = std::thread(screen_universal_key);
+	}
+	for (int i(0); i < opt_threads; ++i) {
+		threads[i].join();
+	}
+}
+
+static void screen_shared_key(void) {
+	int i(0);
+	while (get_next_i(i)) {
+		mer_list[i].set_subtraction(shared_kmers, opt_max_kmer_sharing);
+	}
+}
+
+static void screen_shared_keys(void) {
+	std::thread threads[opt_threads];
+	int x(-1);
+	get_next_i(x);		// reset count
+	for (int i(0); i < opt_threads; ++i) {
+		threads[i] = std::thread(screen_shared_key);
+	}
+	for (int i(0); i < opt_threads; ++i) {
+		threads[i].join();
+	}
+}
+
+static void calculate_shared_identity(void) {
+	int i, j;
+	while (get_next_pair(i, j)) {
+		if (i == j) {
+			results[i][j] = mer_list[i].unshared_identity(shared_kmers) / mer_list[i].size();
+		} else {
+			const double x(mer_list[i].shared_identity(mer_list[j]));
+			results[i][j] = x / mer_list[i].size();
+			results[j][i] = x / mer_list[j].size();
+		}
+	}
+}
+
+static void calculate_shared_identities(void) {
+	std::thread threads[opt_threads];
+	for (int i(0); i < opt_threads; ++i) {
+		threads[i] = std::thread(calculate_shared_identity);
+	}
+	for (int i(0); i < opt_threads; ++i) {
+		threads[i].join();
+	}
+}
+
+static void print_results(char * const * argv) {
+	for (int i(0); i < hash_count; ++i) {
+		for (int j(0); j < hash_count; ++j) {
+			double x;
+			if (i == j && skip_diagonal) {
+				x = 1;
+			} else if (j > i && skip_upper_matrix) {
+				x = results[j][i];
+			} else {
+				x = results[i][j];
+			}
+			std::cout << x << " ";
+		}
+		std::cout << argv[i + optind] << "\n";
+	}
+}
+
+static void print_mer_histogram(hash &h) {
+	std::map<hash::value_type, unsigned long> counts;
+	hash::const_iterator a(h.begin());
+	const hash::const_iterator end_a(h.end());
+	for (; a != end_a; ++a) {
+		++counts[a.value];
+	}
+	std::map<hash::value_type, unsigned long>::const_iterator c(counts.begin());
+	const std::map<hash::value_type, unsigned long>::const_iterator end_c(counts.end());
+	for (; c != end_c; ++c) {
+		std::cout << c->first << " " << c->second << "\n";
+	}
+}
+
+int main(const int argc, char * const * argv) {
 	get_opts(argc, argv);
 	if (argc == optind) {
 		print_usage();
 	}
-	const int hash_count(argc - optind);
+	hash_count = argc - optind;
 	// load in saved hashes
-	dhash mer_list[hash_count];
+	mer_list.assign(hash_count, dhash());
 	for (int i(0); i < hash_count; ++i) {
 		if (opt_files_to_cutoff && i == opt_files_to_cutoff) {
 			opt_min_kmer_frequency = 0;
@@ -263,32 +390,28 @@ int main(int argc, char ** argv) {
 		close_compressed(fd);
 	}
 	if (opt_screen_shared_kmers) {
-		dhash mer_screen;
 		mer_screen.init_for_intersection(mer_list[0]);
+		// possibly make this threaded
 		for (int i(1); i < hash_count; ++i) {
-			mer_screen.find_intersection(mer_list[i]);
+			mer_screen.set_intersection(mer_list[i]);
 		}
+		screen_universal_keys();
+		// XXX - could delete mer_screen here
+	}
+	if (opt_max_kmer_sharing) {
+		uint64_t x(0);
 		for (int i(0); i < hash_count; ++i) {
-			mer_list[i].screen_keys(mer_screen);
+			x += mer_list[i].size();
 		}
+		shared_kmers.init(x);
+		for (int i(0); i < hash_count; ++i) {
+			shared_kmers.set_addition(mer_list[i]);
+		}
+		screen_shared_keys();
+		// XXX - could delete shared_kmers here
 	}
-	if (opt_shared_identity) {
-		// calculate shared identity
-		for (int i(1); i < hash_count; ++i) {
-			for (int j(0); j < i; ++j) {
-				const double x(mer_list[i].shared_identity(mer_list[j]));
-				std::cerr << x << " ";
-			}
-			std::cerr << "\n";
-		}
-	} else {
-		// calculate dot products
-		for (int i(1); i < hash_count; ++i) {
-			for (int j(0); j < i; ++j) {
-				const double x(mer_list[i].dot_product(mer_list[j]));
-				std::cerr << x << " ";
-			}
-			std::cerr << "\n";
-		}
-	}
+	results.assign(hash_count, std::vector<double>(hash_count, 0));
+	calculate_shared_identities();
+	skip_upper_matrix = 0;
+	print_results(argv);
 }
