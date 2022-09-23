@@ -326,6 +326,41 @@ ssize_t skip_next_line(const int fd, const char delim) {
 	}
 }
 
+// read and discard next size chars from fd
+
+ssize_t skip_next_chars(const int fd, const size_t size) {
+	if (fd < 0 || local.open_max <= fd) {
+		std::cerr << "Error: pfread: fd out of range: " << fd << '\n';
+		return -1;
+	}
+	if (local.buffers[fd].empty()) {
+		std::cerr << "Error: pfread: buffer unallocated\n";
+		return -1;
+	}
+	size_t k(size);
+	char * const buf(local.buffers[fd].array());
+	ssize_t &i(local.buffer_start[fd]);
+	ssize_t &j(local.buffer_length[fd]);
+	for (;;) {
+		const size_t n(j - i);
+		if (n >= k) {
+			i += k;
+			return size;
+		}
+		k -= n;
+		i = 0;
+		j = read(fd, buf, BUFSIZE);
+		if (j <= 0) {
+			if (j == -1) {
+				std::cerr << "Error: read(" << fd << "): " << strerror(errno) << '\n';
+			}
+			j = 0;
+			// only return -1 if we don't return anything else
+			return k == size ? -1 : static_cast<ssize_t>(size - k);
+		}
+	}
+}
+
 // read up to size bytes from fd and put them into ptr
 
 ssize_t pfread(const int fd, void * const ptr, const size_t size) {
@@ -343,12 +378,12 @@ ssize_t pfread(const int fd, void * const ptr, const size_t size) {
 	ssize_t &i(local.buffer_start[fd]);
 	ssize_t &j(local.buffer_length[fd]);
 	for (;;) {
-		if (static_cast<size_t>(j - i) >= k) {
+		const size_t n(j - i);
+		if (n >= k) {
 			memcpy(s, buf + i, k);
 			i += k;
 			return size;
 		}
-		const size_t n(j - i);
 		memcpy(s, buf + i, n);
 		s += n;
 		k -= n;
