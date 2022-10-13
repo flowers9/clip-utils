@@ -20,7 +20,7 @@
 class OpenCompressedLocalData {
     private:
 	bool m_already_closed_stdin;	// prevent reuse of closed stream
-	// map of open files to gzip process id's
+	// map of open files to decompression process id's
 	std::map<int, pid_t> m_open_processes;
 	// list of closed processes that need to be waited on
 	std::list<pid_t> m_closed_processes;
@@ -355,7 +355,7 @@ ssize_t skip_next_chars(const int fd, const size_t size) {
 				std::cerr << "Error: read(" << fd << "): " << strerror(errno) << '\n';
 			}
 			j = 0;
-			// only return -1 if we don't return anything else
+			// only return -1 if we don't skip anything
 			return k == size ? -1 : static_cast<ssize_t>(size - k);
 		}
 	}
@@ -389,7 +389,7 @@ ssize_t pfread(const int fd, void * const ptr, const size_t size) {
 	k -= n;
 	i = j = 0;
 	do {	// now just read directly into ptr
-		const ssize_t m(read(fd, buf, k));
+		const ssize_t m(read(fd, s, k));
 		if (m <= 0) {
 			if (m == -1) {
 				std::cerr << "Error: read(" << fd << "): " << strerror(errno) << '\n';
@@ -397,6 +397,7 @@ ssize_t pfread(const int fd, void * const ptr, const size_t size) {
 			// only return -1 if we don't return anything else
 			return k == size ? -1 : static_cast<ssize_t>(size - k);
 		}
+		s += m;
 		k -= m;
 	} while (k);
 	return size;
