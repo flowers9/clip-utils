@@ -330,11 +330,11 @@ ssize_t skip_next_line(const int fd, const char delim) {
 
 ssize_t skip_next_chars(const int fd, const size_t size) {
 	if (fd < 0 || local.open_max <= fd) {
-		std::cerr << "Error: pfread: fd out of range: " << fd << '\n';
+		std::cerr << "Error: skip_next_chars: fd out of range: " << fd << '\n';
 		return -1;
 	}
 	if (local.buffers[fd].empty()) {
-		std::cerr << "Error: pfread: buffer unallocated\n";
+		std::cerr << "Error: skip_next_chars: buffer unallocated\n";
 		return -1;
 	}
 	size_t k(size);
@@ -377,51 +377,29 @@ ssize_t pfread(const int fd, void * const ptr, const size_t size) {
 	char * const buf(local.buffers[fd].array());
 	ssize_t &i(local.buffer_start[fd]);
 	ssize_t &j(local.buffer_length[fd]);
-	for (;;) {
-		const size_t n(j - i);
-		if (n >= k) {
-			memcpy(s, buf + i, k);
-			i += k;
-			return size;
-		}
-		memcpy(s, buf + i, n);
-		s += n;
-		k -= n;
-		i = 0;
-		j = read(fd, buf, BUFSIZE);
-		if (j <= 0) {
-			if (j == -1) {
+	const size_t n(j - i);
+	if (n >= k) {		// have enough in buffer
+		memcpy(s, buf + i, k);
+		i += k;
+		return size;
+	}
+	// start by copying buffer out
+	memcpy(s, buf + i, n);
+	s += n;
+	k -= n;
+	i = j = 0;
+	do {	// now just read directly into ptr
+		const ssize_t m(read(fd, buf, k));
+		if (m <= 0) {
+			if (m == -1) {
 				std::cerr << "Error: read(" << fd << "): " << strerror(errno) << '\n';
 			}
-			j = 0;
 			// only return -1 if we don't return anything else
 			return k == size ? -1 : static_cast<ssize_t>(size - k);
 		}
-	}
-}
-
-// like pfread(), but doesn't use buffer; obviously, don't use along with
-// pfread(); currently intended for testing purposes only
-
-ssize_t pfread2(const int fd, void * const ptr, size_t size) {
-	assert(-1 < fd && fd < local.open_max);
-	char *buf(static_cast<char *>(ptr));
-	while (size != 0) {
-		const ssize_t j(read(fd, buf, size));
-		if (j <= 0) {
-			if (j == -1) {
-				std::cerr << "Error: read(" << fd << "): " << strerror(errno) << '\n';
-				// only return -1 if we haven't read anything
-				if (buf == ptr) {
-					return -1;
-				}
-			}
-			break;
-		}
-		size -= j;
-		buf += j;
-	}
-	return (buf - static_cast<char *>(ptr));
+		k -= m;
+	} while (k);
+	return size;
 }
 
 // like pfread, but don't remove anything unread from the buffer

@@ -1,4 +1,5 @@
 #include "hash.h"	// hash
+#include "next_prime.h"	// next_prime()
 #include "open_compressed.h"	// close_compressed(), open_compressed(), pfread()
 #include "version.h"	// VERSION
 #include <getopt.h>	// getopt(), optarg, optind
@@ -32,11 +33,10 @@ class dhash : public hash {
 	double shared_identity(const dhash &) const;
 };
 
-// like init_from_file(), but no alt values, and value is always 1 if key is present
+// like init_from_file(), but no alt values, and value is always 1 if key is present;
+// also, resize hash to be 50% full
 
-// XXX - read in value_list (if you're using cutoffs, otherwise just
-// forward past it), then resize array to 50% full and rehash as you read
-// in key_list
+// XXX - unused keys no longer have zero values - make sure this works properly
 
 void dhash::init_from_file2(const int fd) {
 	const std::string s(boilerplate());
@@ -46,32 +46,66 @@ void dhash::init_from_file2(const int fd) {
 		std::cerr << "Error: could not read hash from file: header mismatch\n";
 		exit(1);
 	}
-	pfread(fd, &modulus, sizeof(modulus));
+	offset_type original_modulus, original_used_elements;
+	pfread(fd, &original_modulus, sizeof(original_modulus));
 	pfread(fd, &collision_modulus, sizeof(collision_modulus));
-	pfread(fd, &used_elements, sizeof(used_elements));
+	pfread(fd, &original_used_elements, sizeof(original_used_elements));
 	pfread(fd, &alt_size, sizeof(alt_size));
 	alt_size = 0;
-	key_list = new key_type[modulus];
-	value_list = new small_value_type[modulus];
 	alt_list = NULL;
 	alt_map = NULL;
-	// read in values (they're the smallest size)
-	pfread(fd, &value_list[0], sizeof(small_value_type) * modulus);
-	// read in keys for non-zero values
-	for (offset_type i(0); i < modulus; ++i) {
-		if (value_list[i] == 0) {
-			key_list[i] = INVALID_KEY;
-		} else {
-			pfread(fd, &key_list[i], sizeof(key_type));
-			if (value_list[i] < opt_min_kmer_frequency) {
-				// don't set key to INVALID, as that could hork lookups
-				value_list[i] = 0;
-				--used_elements;	// only count non-zero keys
-			} else {
-				value_list[i] = 1;
+	small_value_type *old_value_list;
+	if (opt_min_kmer_frequency) {	// screen out keys with low values
+		old_value_list = new small_value_type[modulus];
+		// read in values (they're the smallest size)
+		pfread(fd, &old_value_list[0], sizeof(small_value_type) * modulus);
+		for (offset_type i(0); i < modulus; ++i) {
+			// zero values weren't counted as used elements already
+			if (old_value_list[i] && old_value_list[i] < opt_min_kmer_frequency) {
+				--used_elements;
 			}
 		}
+	} else {
+		skip_next_chars(fd, sizeof(small_value_type) * modulus);
 	}
+	size_t size_asked(2 * used_elements);
+	used_elements = 1;	// to account for minimum of one INVALKID_KEYs
+	if (size_asked < 3) {	// to avoid collision_modulus == modulus
+		size_asked = 3;
+	}
+	modulus = next_prime(size_asked);
+	// collision_modulus just needs to be relatively prime with modulus;
+	// since modulus is prime, any value will do - I made it prime for fun
+	collision_modulus = next_prime(size_asked / 2);
+	key_list = new key_type[modulus];
+	value_list = new small_value_type[modulus];
+	// initialize keys; values are initialized as keys are entered
+	for (offset_type i = 0; i != modulus; ++i) {
+		key_list[i] = INVALID_KEY;
+	}
+	// subsequent calculations want a zero value for invalid entries
+	memset(value_list, 0, sizeof(small_value_type) * modulus);
+	// read in keys
+	key_type x;
+	if (opt_min_kmer_frequency) {	// screen out keys with low values
+		for (offset_type i(0); i < modulus; ++i) {
+			if (old_value_list[i]) {
+				pfread(fd, &x, sizeof(key_type));
+				if (old_value_list[i] >= opt_min_kmer_frequency) {
+					// don't have to worry about hash filling up
+					value_list[insert_offset(x)] = 1;
+				}
+			}
+		}
+		delete[] old_value_list;
+	} else {
+		for (offset_type i(0); i < modulus; ++i) {
+			pfread(fd, &x, sizeof(key_type));
+			// don't have to worry about hash filling up
+			value_list[insert_offset(x)] = 1;
+		}
+	}
+
 }
 
 // zero any key where h's value is above cutoff
@@ -198,7 +232,7 @@ class counter_1d {
 			return 0;
 		}
 	}
-	void reset(const int end_x, const int x_offset) {
+	void set(const int end_x, const int x_offset) {
 		i_ = -1;
 		end_i_ = end_x;
 		i_offset_ = x_offset;
@@ -232,7 +266,7 @@ class counter_2d {
 			return 0;
 		}
 	}
-	void reset(const int end_x, const int end_y, const int x_offset, const int y_offset) {
+	void set(const int end_x, const int end_y, const int x_offset, const int y_offset) {
 		i_ = 0;
 		j_ = -1;
 		end_i_ = end_x;
@@ -384,7 +418,7 @@ int main(const int argc, char * const * argv) {
 		for (size_t j(0); j < opt_reference_list.size(); ++j) {
 			shared_kmers.set_addition(mer_list[j + fastq_count]);
 		}
-		i_counter.reset(opt_reference_list.size(), fastq_count);
+		i_counter.set(opt_reference_list.size(), fastq_count);
 		screen_shared_keys();
 		// could delete shared_kmers here
 	}
@@ -405,7 +439,7 @@ int main(const int argc, char * const * argv) {
 		y_offset = fastq_count;
 		style = 2;
 	}
-	pair_counter.reset(x_size, y_size, 0, y_offset);
+	pair_counter.set(x_size, y_size, 0, y_offset);
 	results.assign(x_size, std::vector<double>(y_size, 0));
 	calculate_shared_identities();
 	print_results(x_size, y_size, style, argv);
