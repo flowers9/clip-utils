@@ -5,7 +5,7 @@
 #include "read_file.h"	// ReadFile, opt_strip_tracename
 #include "strtostr.h"	// strtostr()
 #include "version.h"	// VERSION
-#include "write_fork.h"	// write_fork()
+#include "write_fork.h"	// close_fork(), write_fork()
 #include <getopt.h>	// getopt(), optarg, optind
 #include <list>		// list<>
 #include <map>		// map<>
@@ -463,7 +463,7 @@ int main(int argc, char **argv) {
 	if (opt_hash_clean || !opt_tmp_file_prefix.empty()) {
 		// have to add one to opt_mer_length,
 		// as init_mer_constants() subtracts one
-		mer_list.set_no_space_response((opt_hash_clean ? hashn::CLEAN_HASH: 0) | (opt_tmp_file_prefix.empty() ? 0 : hashn::TMP_FILE), opt_tmp_file_prefix);
+		mer_list.set_no_space_response((opt_hash_clean ? hashn::CLEAN_HASH : 0) | (opt_tmp_file_prefix.empty() ? 0 : hashn::TMP_FILE), opt_tmp_file_prefix);
 	}
 	if (opt_histogram_restore != -1) {
 		mer_list.init_from_file(opt_histogram_restore);

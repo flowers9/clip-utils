@@ -1,3 +1,4 @@
+#include "breakup_line.h"	// breakup_line()
 #include "open_compressed.h"
 #include "refcount_array.h"	// refcount_array<>
 #include <cassert>	// assert()
@@ -6,16 +7,21 @@
 #include <iostream>	// cerr
 #include <list>		// list<>
 #include <map>		// map<>
+#include <stdlib.h>	// getenv()
 #include <string.h>	// memcpy(), memmove(), strerror()
 #include <string>	// string
 #include <sys/stat.h>	// S_IFDIR, stat(), struct stat
 #include <sys/types.h>	// pid_t, size_t, ssize_t
 #include <sys/wait.h>	// WNOHANG, waitpid()
 #include <unistd.h>	// _SC_OPEN_MAX, _exit(), close(), dup2(), execlp(), fork(), pipe(), read(), sysconf()
+#include <vector>	// vector<>
 
 // XXX - consider switching to popen instead of fork/exec
 
 #define BUFSIZE 32768
+#define BZIP2_COMMAND_DEFAULT "bzip2"
+#define GZIP_COMMAND_DEFAULT "gzip"
+#define XZ_COMMAND_DEFAULT "xz"
 
 class OpenCompressedLocalData {
     private:
@@ -24,6 +30,8 @@ class OpenCompressedLocalData {
 	std::map<int, pid_t> m_open_processes;
 	// list of closed processes that need to be waited on
 	std::list<pid_t> m_closed_processes;
+	std::vector<std::string> m_gzip, m_bzip2, m_xz;
+    private:
 	void finish_nohang(void) {
 		std::list<pid_t>::iterator a(m_closed_processes.begin());
 		const std::list<pid_t>::const_iterator end_a(m_closed_processes.end());
@@ -41,10 +49,12 @@ class OpenCompressedLocalData {
 	refcount_array<char> * const buffers;
 	ssize_t * const buffer_start;
 	ssize_t * const buffer_length;
+    public:
 	OpenCompressedLocalData(void) :
 		m_already_closed_stdin(0),
 		m_open_processes(),
 		m_closed_processes(),
+		m_gzip(), m_bzip2(), m_xz(),
 		open_max(sysconf(_SC_OPEN_MAX)),
 		buffers(new refcount_array<char>[open_max]),
 		buffer_start(new ssize_t[open_max]),
@@ -54,17 +64,18 @@ class OpenCompressedLocalData {
 		assert(buffers);
 		assert(buffer_start);
 		assert(buffer_length);
+		// zero may get reused as something else, but always starts as stdin
 		buffer_start[0] = buffer_length[0] = 0;
 	}
 	~OpenCompressedLocalData(void) {
-		delete[] buffers;
-		delete[] buffer_start;
-		delete[] buffer_length;
 		std::map<int, pid_t>::const_iterator a(m_open_processes.begin());
 		const std::map<int, pid_t>::const_iterator end_a(m_open_processes.end());
 		for (; a != end_a; ++a) {
 			close(a->first);
 		}
+		delete[] buffers;
+		delete[] buffer_start;
+		delete[] buffer_length;
 		std::list<pid_t>::const_iterator b(m_closed_processes.begin());
 		const std::list<pid_t>::const_iterator end_b(m_closed_processes.end());
 		for (; b != end_b; ++b) {
@@ -94,10 +105,95 @@ class OpenCompressedLocalData {
 	const bool &already_closed_stdin(void) const {
 		return m_already_closed_stdin;
 	}
+	// return array suitable to passing to execvp()
+	char **gzip_args(const std::string &);
+	char **bzip2_args(const std::string &);
+	char **xz_args(const std::string &);
     private:
 	OpenCompressedLocalData(const OpenCompressedLocalData &);
 	OpenCompressedLocalData &operator=(const OpenCompressedLocalData &);
 };
+
+char **OpenCompressedLocalData::gzip_args(const std::string &file) {
+	if (m_gzip.empty()) {
+		char * const env_cmd(getenv("GZIP_COMMAND"));
+		breakup_line(env_cmd ? env_cmd : GZIP_COMMAND_DEFAULT, m_gzip);
+		m_gzip.push_back("-d");		// an extra -d or -c doesn't hurt
+		m_gzip.push_back("-c");
+	}
+	m_gzip.push_back(file);
+	size_t n(0);
+	for (size_t i(0); i != m_gzip.size(); ++i) {
+		n += m_gzip[i].size() + 1;	// +1 for trailing null
+	}
+	// this would be a memory leak, but we only ever allocate
+	// it immediately before calling execvp()
+	char *m_gzip_string(new char[n]);
+	char **m_gzip_args(new char*[m_gzip.size() + 1]);
+	char *s(m_gzip_string);
+	for (size_t i(0); i != m_gzip.size(); ++i) {
+		memcpy(s, m_gzip[i].c_str(), m_gzip[i].size() + 1);
+		m_gzip_args[i] = s;
+		s += m_gzip[i].size() + 1;
+	}
+	m_gzip_args[m_gzip.size()] = 0;	// trailing null
+	m_gzip.pop_back();		// remove file
+	return m_gzip_args;
+}
+
+char **OpenCompressedLocalData::bzip2_args(const std::string &file) {
+	if (m_bzip2.empty()) {
+		char * const env_cmd(getenv("BZIP2_COMMAND"));
+		breakup_line(env_cmd ? env_cmd : BZIP2_COMMAND_DEFAULT, m_bzip2);
+		m_bzip2.push_back("-d");		// an extra -d or -c doesn't hurt
+		m_bzip2.push_back("-c");
+	}
+	m_bzip2.push_back(file);
+	size_t n(0);
+	for (size_t i(0); i != m_bzip2.size(); ++i) {
+		n += m_bzip2[i].size() + 1;	// +1 for trailing null
+	}
+	// this would be a memory leak, but we only ever allocate
+	// it immediately before calling execvp()
+	char *m_bzip2_string(new char[n]);
+	char **m_bzip2_args(new char*[m_bzip2.size() + 1]);
+	char *s(m_bzip2_string);
+	for (size_t i(0); i != m_bzip2.size(); ++i) {
+		memcpy(s, m_bzip2[i].c_str(), m_bzip2[i].size() + 1);
+		m_bzip2_args[i] = s;
+		s += m_bzip2[i].size() + 1;
+	}
+	m_bzip2_args[m_bzip2.size()] = 0;	// trailing null
+	m_bzip2.pop_back();		// remove file
+	return m_bzip2_args;
+}
+
+char **OpenCompressedLocalData::xz_args(const std::string &file) {
+	if (m_xz.empty()) {
+		char * const env_cmd(getenv("XZ_COMMAND"));
+		breakup_line(env_cmd ? env_cmd : XZ_COMMAND_DEFAULT, m_xz);
+		m_xz.push_back("-d");		// an extra -d or -c doesn't hurt
+		m_xz.push_back("-c");
+	}
+	m_xz.push_back(file);
+	size_t n(0);
+	for (size_t i(0); i != m_xz.size(); ++i) {
+		n += m_xz[i].size() + 1;	// +1 for trailing null
+	}
+	// this would be a memory leak, but we only ever allocate
+	// it immediately before calling execvp()
+	char *m_xz_string(new char[n]);
+	char **m_xz_args(new char*[m_xz.size() + 1]);
+	char *s(m_xz_string);
+	for (size_t i(0); i != m_xz.size(); ++i) {
+		memcpy(s, m_xz[i].c_str(), m_xz[i].size() + 1);
+		m_xz_args[i] = s;
+		s += m_xz[i].size() + 1;
+	}
+	m_xz_args[m_xz.size()] = 0;	// trailing null
+	m_xz.pop_back();		// remove file
+	return m_xz_args;
+}
 
 static OpenCompressedLocalData local;
 
@@ -204,18 +300,16 @@ int open_compressed(const std::string &filename) {
 			for (int i(3); i < local.open_max; ++i) {
 				close(i);
 			}
+			char **cmd;
 			if (suffix == ".bz2") {
-				if (execlp("bzip2", "bzip2", "-d", "-c", s.c_str(), static_cast<char *>(0)) == -1) {
-					std::cerr << "Error: execlp bzip2 -d -c: " << strerror(errno) << '\n';
-				}
+				cmd = local.bzip2_args(s);
 			} else if (suffix == ".xz") {
-				if (execlp("xz", "xz", "-d", "-c", s.c_str(), static_cast<char *>(0)) == -1) {
-					std::cerr << "Error: execlp xz -d -c: " << strerror(errno) << '\n';
-				}
+				cmd = local.xz_args(s);
 			} else {
-				if (execlp("gzip", "gzip", "-d", "-c", s.c_str(), static_cast<char *>(0)) == -1) {
-					std::cerr << "Error: execlp gzip -d -c: " << strerror(errno) << '\n';
-				}
+				cmd = local.gzip_args(s);
+			}
+			if (execvp(cmd[0], cmd) == -1) {
+				std::cerr << "Error: execvp " << cmd[0] << ": " << strerror(errno) << '\n';
 			}
 			_exit(1);
 		} else {		// parent

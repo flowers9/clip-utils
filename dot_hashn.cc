@@ -1,4 +1,4 @@
-#include "hash.h"	// hash
+#include "hashn.h"	// hashn
 #include "next_prime.h"	// next_prime()
 #include "open_compressed.h"	// close_compressed(), open_compressed(), pfread()
 #include "version.h"	// VERSION
@@ -19,24 +19,92 @@
 
 static int opt_keep_total_kmer_count;
 static int opt_max_kmer_sharing;
+static int opt_max_kmer_frequency;
 static int opt_min_kmer_frequency;
 static int opt_threads;
 static std::vector<std::string> opt_reference_list;
 
 // extend hash by adding a few methods
 
-class dhash : public hash {
+class dhash : public hashn {
     public:
-	void init_from_file2(int);		// don't load alts, all values 1
+	void init_from_file2(int, int);		// don't load alts, all values 1
 	void set_subtraction(const dhash &, value_type = 0);
 	void set_addition(const dhash &);
 	double shared_identity(const dhash &) const;
+	value_type value(const key_type_base &) const;
+	bool increment(const key_type_base &key);
+	void print_kmer_matching(const dhash *, size_t) const;
+	void print_key(const dhash::key_type_base &key) const;
 };
 
-// like init_from_file(), but no alt values, and value is always 1 if key is present;
-// also, resize hash to be 50% full
+// like increment(key_type), but doesn't create overflow values
+bool dhash::increment(const key_type_base &key) {
+	const offset_type i(insert_offset(key));
+	if (i == modulus) {	// insert failed
+		return 0;
+	}
+	if (value_list[i] != max_small_value) {
+		++value_list[i];
+	}
+	return 1;
+}
 
-void dhash::init_from_file2(const int fd) {
+// like value(key_type), but doesn't check value_map for overflow values
+dhash::value_type dhash::value(const key_type_base &key) const {
+	const offset_type i(find_offset(key));
+	if (i == modulus) {	// key not found
+		return 0;
+	}
+	return value_list[i];
+}
+
+// like init_from_file(), but no alt values, and value is always 1 if key is present
+// if file_type is 0, it's a reference file, 1 is a fastq file
+void dhash::init_from_file2(const int fd, const int file_type) {
+	const std::string s(boilerplate());
+	char t[s.size()];
+	pfread(fd, t, s.size());
+	if (memcmp(t, s.c_str(), s.size()) != 0) {
+		std::cerr << "Error: could not read hash from file: header mismatch\n" << s << "\n" << t << "\n";
+		exit(1);
+	}
+	pfread(fd, &modulus, sizeof(modulus));
+	pfread(fd, &collision_modulus, sizeof(collision_modulus));
+	pfread(fd, &used_elements, sizeof(used_elements));
+	pfread(fd, &alt_size, sizeof(alt_size));
+	pfread(fd, &bit_width, sizeof(bit_width));
+	word_width = (bit_width + 8 * sizeof(base_type) - 1) / (8 * sizeof(base_type));
+	const offset_type n((modulus + 1) * word_width);
+	alt_size = 0;
+	alt_list = NULL;
+	alt_map = NULL;
+	key_list = new base_type[n];
+	value_list = new small_value_type[modulus];
+	pfread(fd, &value_list[0], sizeof(small_value_type) * modulus);
+	base_type *a(key_list);
+	for (offset_type i(0); i != modulus; ++i) {
+		if (value_list[i] == 0) {
+			base_type * const end_a(a + word_width);
+			for (; a != end_a; ++a) {
+				*a = INVALID_KEY;
+			}
+		} else {
+			pfread(fd, a, sizeof(base_type) * word_width);
+			a += word_width;
+			if ((file_type == 0 && opt_max_kmer_frequency < value_list[i]) || (file_type == 1 && value_list[i] < opt_min_kmer_frequency)) {
+				// don't change key to INVALID_KEY, or we'd have to rehash
+				value_list[i] = 0;
+			}
+		}
+	}
+	invalid_key.assign(*this, modulus);
+	pfread(fd, a, sizeof(base_type) * word_width);		// invalid_key
+}
+
+#if 0
+// like init_from_file2(), but resize hash to be 50% full
+void dhash::rehash_from_file(const int fd) {
 	const std::string s(boilerplate());
 	char t[s.size()];
 	pfread(fd, t, s.size());
@@ -49,11 +117,14 @@ void dhash::init_from_file2(const int fd) {
 	pfread(fd, &collision_modulus, sizeof(collision_modulus));
 	pfread(fd, &used_elements, sizeof(used_elements));
 	pfread(fd, &alt_size, sizeof(alt_size));
+	pfread(fd, &bit_width, sizeof(bit_width));
+	word_width = (bit_width + 8 * sizeof(base_type) - 1) / (8 * sizeof(base_type));
 	const offset_type original_used_elements(used_elements);
 	alt_size = 0;
 	alt_list = NULL;
 	alt_map = NULL;
 	small_value_type *old_value_list;
+	used_elements = original_used_elements;
 	if (opt_min_kmer_frequency) {	// screen out keys with low values
 		old_value_list = new small_value_type[modulus];
 		// read in values (they're the smallest size)
@@ -76,20 +147,23 @@ void dhash::init_from_file2(const int fd) {
 	// collision_modulus just needs to be relatively prime with modulus;
 	// since modulus is prime, any value will do - I made it prime for fun
 	collision_modulus = next_prime(size_asked / 2);
-	key_list = new key_type[modulus];
+	const offset_type n((modulus + 1) * word_width);
+	key_list = new base_type[n];
 	value_list = new small_value_type[modulus];
 	// initialize keys; values are initialized as keys are entered
-	for (offset_type i = 0; i != modulus; ++i) {
+	for (offset_type i(0); i != n; ++i) {
 		key_list[i] = INVALID_KEY;
 	}
+	invalid_key.assign(*this, modulus);
 	// subsequent calculations want a zero value for invalid entries
 	memset(value_list, 0, sizeof(small_value_type) * modulus);
 	// read in keys
-	key_type x;
+	base_type *xbuf(new base_type[word_width]);
+	key_type_base x(word_width, xbuf);
 	if (opt_min_kmer_frequency) {	// screen out keys with low values
 		for (offset_type i(0); i < modulus; ++i) {
 			if (old_value_list[i]) {
-				pfread(fd, &x, sizeof(key_type));
+				pfread(fd, xbuf, sizeof(base_type) * word_width);
 				if (old_value_list[i] >= opt_min_kmer_frequency) {
 					// don't have to worry about hash filling up
 					value_list[insert_offset(x)] = 1;
@@ -99,19 +173,21 @@ void dhash::init_from_file2(const int fd) {
 		delete[] old_value_list;
 	} else {
 		for (offset_type i(0); i < original_used_elements - 1; ++i) {
-			pfread(fd, &x, sizeof(key_type));
+			pfread(fd, xbuf, sizeof(base_type) * word_width);
 			// don't have to worry about hash filling up
 			value_list[insert_offset(x)] = 1;
 		}
 	}
-
+	delete[] xbuf;
 }
+#endif
 
 // zero any key where h's value is above cutoff
 void dhash::set_subtraction(const dhash &h, const value_type max_value) {
-	for (offset_type i(0); i < modulus; ++i) {
-		if (value_list[i] && h.value(key_list[i]) > max_value) {
-			// don't set key to INVALID, as that could hork lookups
+	base_type *j(key_list);
+	for (offset_type i(0); i < modulus; ++i, j += word_width) {
+		if (value_list[i] && h.value(key_type_internal(*this, j)) > max_value) {
+			// don't set key to INVALID_KEY, as that could hork lookups
 			value_list[i] = 0;
 			if (!opt_keep_total_kmer_count) {
 				--used_elements;	// only count non-zero keys
@@ -122,8 +198,9 @@ void dhash::set_subtraction(const dhash &h, const value_type max_value) {
 
 // increment all values from h
 void dhash::set_addition(const dhash &h) {
-	for (offset_type i(0); i < h.modulus; ++i) {
-		if (h.value_list[i] && !increment(h.key_list[i])) {
+	base_type *j(h.key_list);
+	for (offset_type i(0); i < h.modulus; ++i, j += h.word_width) {
+		if (h.value_list[i] && !increment(key_type_internal(h, j))) {
 			std::cerr << "Error: ran out of space in hash - recompile with larger hash size\n";
 			exit(1);
 		}
@@ -132,34 +209,61 @@ void dhash::set_addition(const dhash &h) {
 
 // count kmers in common
 double dhash::shared_identity(const dhash &h) const {
+	base_type *j(key_list);
 	uint64_t x(0);
-	for (offset_type i(0); i < modulus; ++i) {
-		if (value_list[i] && h.value(key_list[i])) {
+	for (offset_type i(0); i < modulus; ++i, j += word_width) {
+		if (value_list[i] && h.value(key_type_internal(*this, j))) {
 			++x;
 		}
 	}
 	return x;
 }
 
+void dhash::print_key(const dhash::key_type_base &key) const {
+	const char values[4] = { 'A', 'C', 'G', 'T' };
+	for (unsigned long i(bit_width - 2); i != 0; i -= 2) {
+		std::cout << values[key.basepair(i)];
+	}
+	std::cout << values[key.basepair(0)];
+}
+
+void dhash::print_kmer_matching(const dhash * const h, const size_t n) const {
+	base_type *j(key_list);
+	for (offset_type i(0); i < modulus; ++i, j += word_width) {
+		if (value_list[i]) {
+			const key_type_internal key(*this, j);
+			print_key(key);
+			std::cout << ' ';
+			for (size_t k(0); k < n; ++k) {
+				std::cout << h[k].value(key);
+			}
+			std::cout << "\n";
+		}
+	}
+}
+
 static void print_usage() {
 	std::cerr << "usage: dot_hash saved_hash1 saved_hash2 ...\n"
 		"    -h    print this help\n"
 		"    -k    when calculating fraction, compare to total unique kmers\n"
-		"    -m ## min kmer frequency (only applies to non-references) [0]\n"
+		"    -m ## min kmer frequency (only applies to non-references)\n"
+		"    -M ## max kmer frequency (only applies to references) [1]\n"
 		"    -r ## add reference file (may be specified multiple times)\n"
 		"    -t ## threads [1]\n"
-		"    -u ## only count kmers shared with at most ## references [all]\n"
+		"    -u ## only count kmers shared with at most ## references\n"
+		"          (negative values mean shared by all but ##)\n"
 		"    -V    print version\n";
 	exit(1);
 }
 
 static void get_opts(const int argc, char * const * argv) {
 	opt_keep_total_kmer_count = 0;
-	opt_max_kmer_sharing = dhash::max_small_value;
+	opt_max_kmer_sharing = 0;
 	opt_min_kmer_frequency = 0;
+	opt_max_kmer_frequency = 1;
 	opt_threads = 1;
 	int c, x;
-	while ((c = getopt(argc, argv, "hkm:r:t:u:V")) != EOF) {
+	while ((c = getopt(argc, argv, "hkm:M:r:t:u:V")) != EOF) {
 		switch (c) {
 		    case 'h':
 			print_usage();
@@ -178,6 +282,17 @@ static void get_opts(const int argc, char * const * argv) {
 			}
 			opt_min_kmer_frequency = x;
 			break;
+		    case 'M':
+			std::istringstream(optarg) >> x;
+			if (x < 1) {
+				std::cerr << "Error: -m requires positive value\n";
+				exit(1);
+			} else if (x > dhash::max_small_value) {
+				std::cerr << "Error: -m value too large: " << x << " (max " << (unsigned int)(dhash::max_small_value) << ")\n";
+				exit(1);
+			}
+			opt_max_kmer_frequency = x;
+			break;
 		    case 'r':
 			opt_reference_list.push_back(optarg);
 			break;
@@ -191,10 +306,6 @@ static void get_opts(const int argc, char * const * argv) {
 			break;
 		    case 'u':
 			std::istringstream(optarg) >> x;
-			if (x < 1) {
-				std::cerr << "Error: -u requires positive value\n";
-				exit(1);
-			}
 			opt_max_kmer_sharing = x;
 			break;
 		    case 'V':
@@ -212,6 +323,20 @@ static void get_opts(const int argc, char * const * argv) {
 		std::cerr << "Error: only one file specified\n";
 		exit(1);
 	}
+	if (opt_max_kmer_sharing < 0 && opt_reference_list.size() > 1) {
+		if (static_cast<size_t>(-opt_max_kmer_sharing) >= opt_reference_list.size()) {
+			std::cerr << "Error: -u out of range\n";
+			exit(1);
+		}
+		opt_max_kmer_sharing = opt_reference_list.size() + opt_max_kmer_sharing;
+	}
+#if 0
+	// for printing shared frequencies
+	if (argc - optind != 1 || opt_reference_list.empty()) {
+		std::cerr << "Error: only one fastq dump may be specified, and at least one reference must be\n";
+		exit(1);
+	}
+#endif
 }
 
 class counter_1d {
@@ -288,14 +413,14 @@ class counter_2d {
 // declared here so threads can easily use them
 static std::vector<dhash> mer_list;
 static std::vector<std::vector<double> > results;
-static dhash shared_kmers;
+static dhash *shared_kmers;
 static counter_1d i_counter;
 static counter_2d pair_counter;
 
 static void screen_shared_key(void) {
 	int i(0);
 	while (i_counter.get_next(i)) {
-		mer_list[i + i_counter.i_offset()].set_subtraction(shared_kmers, opt_max_kmer_sharing);
+		mer_list[i + i_counter.i_offset()].set_subtraction(*shared_kmers, opt_max_kmer_sharing);
 	}
 }
 
@@ -378,47 +503,8 @@ static void print_results(const int end_x, const int end_y, const int style, cha
 	}
 }
 
-int main(const int argc, char * const * argv) {
-	get_opts(argc, argv);
-	const int fastq_count(argc - optind);
-	mer_list.assign(fastq_count + opt_reference_list.size(), dhash());
-	// load in fastq saved hashes
-	int i(0);
-	for (; i < fastq_count; ++i) {
-		const int fd(open_compressed(argv[i + optind]));
-		if (fd == -1) {
-			std::cerr << "Error: could not read saved hash: " << argv[i + optind] << "\n";
-			return 1;
-		}
-		mer_list[i].init_from_file2(fd);
-		close_compressed(fd);
-	}
-	// load in reference saved hashes
-	opt_min_kmer_frequency = 0;
-	std::vector<std::string>::const_iterator a(opt_reference_list.begin());
-	const std::vector<std::string>::const_iterator end_a(opt_reference_list.end());
-	for (; a != end_a; ++a, ++i) {
-		const int fd(open_compressed(*a));
-		if (fd == -1) {
-			std::cerr << "Error: could not read saved hash: " << *a << "\n";
-			return 1;
-		}
-		mer_list[i].init_from_file2(fd);
-		close_compressed(fd);
-	}
-	if (opt_max_kmer_sharing && !opt_reference_list.empty()) {
-		uint64_t x(0);
-		for (size_t j(0); j < opt_reference_list.size(); ++j) {
-			x += mer_list[j + fastq_count].size();
-		}
-		shared_kmers.init(x);
-		for (size_t j(0); j < opt_reference_list.size(); ++j) {
-			shared_kmers.set_addition(mer_list[j + fastq_count]);
-		}
-		i_counter.set(opt_reference_list.size(), fastq_count);
-		screen_shared_keys();
-		// could delete shared_kmers here
-	}
+static void find_dot_values(const int fastq_count, char * const * argv) {
+	// this is the x versus y shared amounts part
 	int x_size, y_size, y_offset, style;
 	if (fastq_count == 0) {				// reference vs reference matrix
 		x_size = y_size = opt_reference_list.size();
@@ -440,4 +526,57 @@ int main(const int argc, char * const * argv) {
 	results.assign(x_size, std::vector<double>(y_size, 0));
 	calculate_shared_identities();
 	print_results(x_size, y_size, style, argv);
+}
+
+int main(const int argc, char * const * argv) {
+	get_opts(argc, argv);
+	const int fastq_count(argc - optind);
+	mer_list.assign(fastq_count + opt_reference_list.size(), dhash());
+	// load in fastq saved hashes
+	int i(0);
+	for (; i < fastq_count; ++i) {
+		std::cerr << "reading " << argv[i + optind] << "\n";
+		const int fd(open_compressed(argv[i + optind]));
+		if (fd == -1) {
+			std::cerr << "Error: could not read saved hash: " << argv[i + optind] << "\n";
+			return 1;
+		}
+		mer_list[i].init_from_file2(fd, 1);
+		std::cerr << "size " << mer_list[i].size() << "\n";
+		close_compressed(fd);
+	}
+	// load in reference saved hashes
+	std::vector<std::string>::const_iterator a(opt_reference_list.begin());
+	const std::vector<std::string>::const_iterator end_a(opt_reference_list.end());
+	for (; a != end_a; ++a, ++i) {
+		std::cerr << "reading " << *a << "\n";
+		const int fd(open_compressed(*a));
+		if (fd == -1) {
+			std::cerr << "Error: could not read saved hash: " << *a << "\n";
+			return 1;
+		}
+		mer_list[i].init_from_file2(fd, 0);
+		std::cerr << "size " << mer_list[i].size() << "\n";
+		close_compressed(fd);
+	}
+	if (opt_reference_list.size() > 1 && opt_max_kmer_sharing != 0) { // && static_cast<size_t>(opt_max_kmer_sharing) < opt_reference_list.size()) {
+		uint64_t x(0);
+		for (size_t j(0); j < opt_reference_list.size(); ++j) {
+			x += mer_list[j + fastq_count].size();
+		}
+		shared_kmers = new dhash;
+		shared_kmers->init(x, mer_list[0].bits());
+		std::cerr << "screening shared kmers\n";
+		for (size_t j(0); j < opt_reference_list.size(); ++j) {
+			shared_kmers->set_addition(mer_list[j + fastq_count]);
+		}
+		std::cerr << "size " << shared_kmers->size() << "\n";
+		i_counter.set(opt_reference_list.size(), fastq_count);
+		screen_shared_keys();
+		delete shared_kmers;
+	}
+	std::cerr << "processing kmers\n";
+	// find_dot_values(fastq_count, argv);
+	// print shared frequencies
+	mer_list[0].print_kmer_matching(&mer_list[1], opt_reference_list.size());
 }

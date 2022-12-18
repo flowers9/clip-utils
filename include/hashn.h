@@ -211,6 +211,7 @@ class hashn {
 
     private:
 	int no_space_response;
+    protected:
 	// INVALID_KEY repeated to fill an entire key size
 	key_type_internal invalid_key;
 	offset_type used_elements;
@@ -224,19 +225,21 @@ class hashn {
 	// alt_list is a two dimensional array (modulus * alt_size) declared
 	// as a single to maintain locality of values to reduce cache misses
 	small_value_type *alt_list;
-	std::string tmp_file_prefix;			// for TMP_FILE response
 	std::map<std::string, value_type> value_map;	// for overflow
 	std::map<std::string, value_type> *alt_map;	// for alt overflows
-	std::list<std::string> state_files;		// for TMP_FILE response
     private:
+	std::string tmp_file_prefix;			// for TMP_FILE response
+	std::list<std::string> state_files;		// for TMP_FILE response
+    protected:
 	std::string boilerplate(void) const;
+	offset_type find_offset(const key_type_base &) const;
+	offset_type insert_offset(const key_type_base &);
+    private:
 	offset_type find_empty_offset(const base_type *) const;
 	void rehash(void);
 	void rehash_alt(void);
 	bool clean_hash(void);
-	offset_type insert_key(const offset_type, base_type *, const key_type &);
-	offset_type insert_offset(const key_type &);
-	offset_type find_offset(const key_type &) const;
+	offset_type insert_key(const offset_type, base_type *, const key_type_base &);
 	void shell_sort(offset_type, offset_type);
 	void calculate_offsets(offset_type, offset_type, offset_type *, int, int) const;
 	void radix_sort_internal(offset_type, offset_type, offset_type *, int);

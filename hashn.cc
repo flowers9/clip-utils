@@ -293,7 +293,7 @@ bool hashn::clean_hash() {
 
 // insert a key at a particular location
 
-hashn::offset_type hashn::insert_key(const offset_type i, base_type * const k, const key_type &key) {
+hashn::offset_type hashn::insert_key(const offset_type i, base_type * const k, const key_type_base &key) {
 	if (used_elements == modulus) {
 		if ((no_space_response & CLEAN_HASH) && clean_hash()) {
 			// have to redo positioning after clean_hash()
@@ -321,7 +321,7 @@ hashn::offset_type hashn::insert_key(const offset_type i, base_type * const k, c
 
 // find a key, or insert it if it doesn't exist; return modulus if hash is full
 
-hashn::offset_type hashn::insert_offset(const key_type &key) {
+hashn::offset_type hashn::insert_offset(const key_type_base &key) {
 	const base_type key_hash(key.hash());
 	offset_type i(key_hash % modulus);
 	base_type * const k(key_list + i * word_width);
@@ -344,7 +344,7 @@ hashn::offset_type hashn::insert_offset(const key_type &key) {
 
 // find a key; return modulus as offset if not found
 
-hashn::offset_type hashn::find_offset(const key_type &key) const {
+hashn::offset_type hashn::find_offset(const key_type_base &key) const {
 	const base_type key_hash(key.hash());
 	offset_type i(key_hash % modulus);
 	const base_type * const k(key_list + i * word_width);
@@ -897,10 +897,12 @@ void hashn::squash_hash(void) {
 	base_type *b(key_list + modulus * word_width);
 	const base_type * const end_a(key_list + used_elements * word_width);
 	for (;;) {
+		// go up the front looking for invalid keys to replace
 		for (a += word_width, ++i; a != end_a && !invalid_key.equal(a); a += word_width, ++i) { }
 		if (a == end_a) {
 			break;
 		}
+		// come down the back looking for keys to move down
 		for (b -= word_width, --j; invalid_key.equal(b); b -= word_width, --j) { }
 		copy(a, b);
 		value_list[i] = value_list[j];

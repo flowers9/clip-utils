@@ -326,7 +326,7 @@ void hash::clean_hash(value_type min, value_type max) {
 
 // insert a key at a particular location
 
-hash::offset_type hash::insert_key(offset_type i, key_type key) {
+hash::offset_type hash::insert_key(const offset_type i, const key_type key) {
 	if (used_elements == modulus) {
 		if ((no_space_response & CLEAN_HASH) && clean_hash()) {
 			// have to redo positioning after clean_hash()
@@ -568,7 +568,7 @@ void hash::const_iterator::increment() {
 	}
 	if (next_keys.empty()) {
 		for (++offset; offset != list->modulus && list->key_list[offset] == INVALID_KEY; ++offset) { }
-		if (offset != list->modulus) {
+		if (offset < list->modulus) {
 			key = list->key_list[offset];
 			value = list->value_list[offset];
 			if (value == max_small_value) {

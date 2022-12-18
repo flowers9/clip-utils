@@ -94,7 +94,6 @@ class hash {
 	std::list<std::string> state_files;		// for TMP_FILE response
     protected:
 	std::string boilerplate(void) const;
-	offset_type find_offset(key_type) const;
 	offset_type insert_offset(key_type);
     private:
 	offset_type find_empty_offset(key_type) const;
@@ -102,6 +101,7 @@ class hash {
 	void rehash_alt(void);
 	bool clean_hash(void);
 	offset_type insert_key(offset_type, key_type);
+	offset_type find_offset(key_type) const;
 	bool add(key_type, value_type);
 	bool add_alt(key_type, value_type, const value_type []);
 	void shell_sort(offset_type, offset_type);

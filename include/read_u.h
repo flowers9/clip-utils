@@ -39,6 +39,7 @@ class Read {
 	// longest continuous sequence without vector
 	size_t vector_start, vector_stop;
 	unsigned int phred_count;	// phred20s in quality region
+    public:
 	explicit Read(void) : quality_start(0), quality_stop(0), vector_start(0), vector_stop(0), phred_count(0) { }
 	explicit Read(const std::string &__s) : header(__s), quality_start(0), quality_stop(0), vector_start(0), vector_stop(0), phred_count(0) { }
 	explicit Read(const std::string &__s, const std::string &__t) : header(__s), quality_start(0), quality_stop(0), vector_start(0), vector_stop(0), phred_count(0) {

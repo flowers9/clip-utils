@@ -21,7 +21,7 @@ int opt_repeat_coverage(1);
 size_t opt_skip_size(0);
 std::map<std::string, bool> opt_exclude;
 
-// these four are constants calculated from the mer length
+// these two are constants calculated from the mer length
 static unsigned long mer_bits;
 static unsigned long mer_length;		// mer_length - 1
 

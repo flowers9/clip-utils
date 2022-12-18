@@ -1,4 +1,4 @@
-#include "open_compressed.h"	// find_suffix(), pfgets(), pfpeek()
+#include "open_compressed.h"	// find_suffix(), open_compressed(), pfgets(), pfpeek()
 #include "read.h"	// Read, opt_quality_cutoff
 #include "read_file.h"
 #include <list>		// list<>
