@@ -119,30 +119,29 @@ hashl::offset_type hashl::insert_key(const offset_type i, const offset_type offs
 
 // create key from bit offset into data
 
+// XXX - something's not right here - and double check key_equal, too, as it's based on this
 void hashl::key_type::copy_in(const base_type * const data, const offset_type i) {
 	offset_type j(i / (sizeof(base_type) * 8));
 	// how many bits we have in the first word
 	const base_type starting_bits(sizeof(base_type) * 8 - i % (sizeof(base_type) * 8));
 	// how many bits the first word is supposed to have for a key
-	const base_type high_offset((bit_shift + 2) % (sizeof(base_type) * 8));
-	if (starting_bits == high_offset) {
-		size_t m(0);
+	const base_type high_bits(bit_shift + 2);
+	size_t m(0);
+	if (starting_bits == high_bits) {
 		k[m] = data[j] & high_mask;
 		for (++m, ++j; m < word_width; ++m, ++j) {
 			k[m] = data[j];
 		}
-	} else if (starting_bits < high_offset) {	// shift left to fill up first word
-		const int shift_left(high_offset - starting_bits);
+	} else if (starting_bits < high_bits) {		// shift left to fill up first word
+		const int shift_left(high_bits - starting_bits);
 		const int shift_right(sizeof(base_type) * 8 - shift_left);
-		size_t m(0);
 		k[m] = ((data[j] << shift_left) | (data[j + 1] >> shift_right)) & high_mask;
 		for (++m, ++j; m < word_width; ++m, ++j) {
 			k[m] = (data[j] << shift_left) | (data[j + 1] >> shift_right);
 		}
-	} else {			// shift right to empty out first word
-		const int shift_right(starting_bits - high_offset);
+	} else {					// shift right to empty out first word
+		const int shift_right(starting_bits - high_bits);
 		const int shift_left(sizeof(base_type) * 8 - shift_right);
-		size_t m(0);
 		k[m] = (data[j] >> shift_right) & high_mask;
 		for (++m; m < word_width; ++m, ++j) {
 			k[m] = (data[j] << shift_left) | (data[j + 1] >> shift_right);
@@ -160,8 +159,8 @@ bool hashl::key_equal(const offset_type i, const key_type &key) const {
 	// how many bits the first word is supposed to have for a key
 	const base_type high_offset(bit_width % (sizeof(base_type) * 8));
 	const base_type high_mask(static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - high_offset));
+	size_t m(0);
 	if (starting_bits == high_offset) {
-		size_t m(0);
 		if (key.k[m] != (data[j] & high_mask)) {
 			return 0;
 		}
@@ -173,7 +172,6 @@ bool hashl::key_equal(const offset_type i, const key_type &key) const {
 	} else if (starting_bits < high_offset) {	// shift left to fill up first word
 		const int shift_left(high_offset - starting_bits);
 		const int shift_right(sizeof(base_type) * 8 - shift_left);
-		size_t m(0);
 		if (key.k[m] != (((data[j] << shift_left) | (data[j + 1] >> shift_right)) & high_mask)) {
 			return 0;
 		}
@@ -185,7 +183,6 @@ bool hashl::key_equal(const offset_type i, const key_type &key) const {
 	} else {					// shift right to empty out first word
 		const int shift_right(starting_bits - high_offset);
 		const int shift_left(sizeof(base_type) * 8 - shift_right);
-		size_t m(0);
 		if (key.k[m] != ((data[j] >> shift_right) & high_mask)) {
 			return 0;
 		}
@@ -368,3 +365,19 @@ void hashl::get_metadata(const void * &metadata_out, size_t &metadata_size_out) 
 	metadata_out = metadata;
 	metadata_size_out = metadata_size;
 }
+
+#if 0
+void hashl::shrink(offset_type size_asked) {
+	if (size_asked < 3)
+		size_asked = 3;
+	}
+	offset_type new_modulus = next_prime(size_asked);
+	if (new_modulus >= modulus) {
+		return;
+	}
+	// collision_modulus just needs to be relatively prime with modulus;
+	// since modulus is prime, any value will do - I made it prime for fun
+	offset_type new_collision_modulus = next_prime(size_asked / 2);
+	// first pass, fill all non-collision slots
+}
+#endif

@@ -24,8 +24,8 @@ class hashl {
 
 	class key_type {
 	    private:
-		size_t word_width;
-		base_type *k;		// stored in reverse - high word in [0]
+		const size_t word_width;
+		base_type * const k;	// stored in reverse - high word in [0]
 		friend class hashl;	// read access to k needed for key_equal()
 	    public:
 		void copy_in(const base_type *, const offset_type);
@@ -102,8 +102,9 @@ class hashl {
 			get_value();
 		}
 		~const_iterator(void) { }
+		// don't call on end()
 		void get_key(key_type &key) const {
-			key.copy_in(list->data, offset);
+			key.copy_in(list->data, list->key_list[offset]);
 		}
 		bool operator==(const const_iterator &__a) const {
 			return list == __a.list && offset == __a.offset;
@@ -147,7 +148,6 @@ class hashl {
 	offset_type insert_offset(const key_type &key, const key_type &comp_key, offset_type);
     private:
 	offset_type insert_key(offset_type, offset_type);
-	void get_key(offset_type, key_type &) const;
 	bool key_equal(offset_type, const key_type &) const;
     public:
 	explicit hashl(void) : used_elements(0), modulus(0), collision_modulus(0), data_size(0), metadata_size(0), bit_width(0), word_width(0), key_list(0), value_list(0), data(0), metadata(0) { }

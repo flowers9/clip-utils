@@ -97,18 +97,18 @@ static void print_mer_histogram(hashn &mer_list) {
 	hashn::const_iterator a(mer_list.begin());
 	const hashn::const_iterator end_a(mer_list.end());
 	for (; a != end_a; ++a) {
-		reverse_key(a.key, comp_key);
-		if (a.key == comp_key) {
-			counts[a.value] += 2;
-			if (opt_print_gc) {
-				gc_counts[a.value] += 2 * count_gc(a.key);
-			}
-		} else {
+		//reverse_key(a.key, comp_key);
+		//if (a.key == comp_key) {
+		//	counts[a.value] += 2;
+		//	if (opt_print_gc) {
+		//		gc_counts[a.value] += 2 * count_gc(a.key);
+		//	}
+		//} else {
 			++counts[a.value];
 			if (opt_print_gc) {
 				gc_counts[a.value] += count_gc(a.key);
 			}
-		}
+		//}
 	}
 	std::map<hashn::value_type, unsigned long>::const_iterator c(counts.begin());
 	const std::map<hashn::value_type, unsigned long>::const_iterator end_c(counts.end());
