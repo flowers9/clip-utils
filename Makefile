@@ -131,7 +131,7 @@ bin/mask_repeats_hashn: obj/breakup_line.o obj/get_name.o obj/hashn.o obj/hist_l
 bin/histogram_hashn: obj/get_name.o obj/hashn.o obj/hist_lib_hashn.o obj/histogram_hashn.o obj/next_prime.o obj/open_compressed.o obj/pattern.o obj/read.o obj/read_file.o obj/time_used.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-bin/histogram_hashl: obj/hashl.o obj/histogram_hashl.o obj/next_prime.o obj/open_compressed.o obj/time_used.o obj/write_fork.o
+bin/histogram_hashl: obj/hashl.o obj/histogram_hashl.o obj/next_prime.o obj/open_compressed.o obj/time_used.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 bin/check_barcodes: obj/check_barcodes.o obj/breakup_line.o obj/strtostr.o

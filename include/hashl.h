@@ -26,6 +26,7 @@ class hashl {
 	    private:
 		size_t word_width;
 		base_type *k;		// stored in reverse - high word in [0]
+		friend class hashl;	// read access to k needed for key_equal()
 	    public:
 		void copy_in(const base_type *, const offset_type);
 		bool operator==(const key_type &__a) const {
@@ -37,7 +38,7 @@ class hashl {
 			return 1;
 		}
 		bool operator!=(const key_type &__a) const {
-			return !(*this == a);
+			return !(*this == __a);
 		}
 		base_type hash(void) const {
 			base_type __x(k[0]);
@@ -46,11 +47,14 @@ class hashl {
 			}
 			return __x;
 		}
+		int basepair(const size_t __i) const {
+			const size_t __n(__i / (sizeof(base_type) * 8));
+			return (k[word_width - 1 - __n] >> (__i - __n * sizeof(base_type) * 8)) & 3;
+		}
 	    private:
 		const size_t bit_shift;		// precalc for push_front
 		const base_type high_mask;	// precalc for push_back
 	    public:
-		explicit key_type(void) : word_width(0), k(0), bit_shift(0), high_mask(0) { }
 		explicit key_type(const hashl &__a) : word_width(__a.words()), k(new base_type[__a.words()]), bit_shift((__a.bits() - 2) % (sizeof(base_type) * 8)), high_mask(static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - __a.bits() % (sizeof(base_type) * 8))) {
 			for (size_t __i(0); __i != word_width; ++__i) {
 				k[__i] = 0;
@@ -83,6 +87,7 @@ class hashl {
 			}
 			k[0] = (__x << bit_shift) | (k[0] >> 2);
 		}
+		void make_complement(const key_type &);
 	};
 
 	class const_iterator {	// only useful for pulling out data
@@ -98,7 +103,7 @@ class hashl {
 		}
 		~const_iterator(void) { }
 		void get_key(key_type &key) const {
-			key->copy_out(list->data, offset);
+			key.copy_in(list->data, offset);
 		}
 		bool operator==(const const_iterator &__a) const {
 			return list == __a.list && offset == __a.offset;
@@ -139,7 +144,7 @@ class hashl {
     protected:
 	std::string boilerplate(void) const;
 	offset_type find_offset(const key_type &) const;
-	offset_type insert_offset(const key_type &, offset_type);
+	offset_type insert_offset(const key_type &key, const key_type &comp_key, offset_type);
     private:
 	offset_type insert_key(offset_type, offset_type);
 	void get_key(offset_type, key_type &) const;
@@ -153,8 +158,10 @@ class hashl {
 	~hashl(void);
 	void init(offset_type, size_t, const base_type *, offset_type);
 	void init_from_file(int);
-	bool increment(const key_type &);		// will not insert new key
-	bool increment(const key_type &, offset_type);	// will insert new key if missing
+	// will not insert new key
+	bool increment(const key_type &);
+	// will insert new key if missing
+	bool increment(const key_type &key, const key_type &comp_key, offset_type);
 	value_type value(const key_type &) const;
 	offset_type size(void) const {
 		return used_elements;
@@ -174,16 +181,16 @@ class hashl {
 	offset_type overflow_size(void) const {
 		return value_map.size();
 	}
-	const_iterator begin(void);
-	const_iterator end(void) const {
-		return const_iterator(this, modulus);
-	}
+	const_iterator begin(void) const;
+	const_iterator end(void) const;
 	const_iterator find(const key_type &key) const {
 		return const_iterator(this, find_offset(key));
 	}
 	void save(int) const;
-	void set_metadata(const void *data, size_t data_size);
-	void get_metadata(const void * &data, size_t &data_size) const;
+	void set_metadata(const void *metadata_in, size_t metadata_size_in);
+	void get_metadata(const void * &metadata_out, size_t &metadata_size_out) const;
+	// throw out current hash, but not data or metadata
+	void resize(offset_type);
 };
 
 #endif // !_HASHL_H
