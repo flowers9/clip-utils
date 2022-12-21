@@ -81,10 +81,10 @@ void hash_metadata::get_subreads(const std::string &seq, const std::vector<std::
 		for (size_t j(ranges[i].first); j < ranges[i].second; ++j) {
 			if (bit_offset) {
 				bit_offset -= 2;
-				data[byte_offset] |= convert_char(seq[j]) << j;
+				data[byte_offset] |= convert_char(seq[j]) << bit_offset;
 			} else {
 				bit_offset = sizeof(hashl::base_type) * 8 - 2;
-				data[++byte_offset] = convert_char(seq[j]) << j;
+				data[++byte_offset] = convert_char(seq[j]) << bit_offset;
 			}
 		}
 	}
@@ -105,7 +105,7 @@ void hash_metadata::read_file(const size_t i) {
 		std::string header;
 		do {
 			const std::string &read_name(reads[i][j]);
-			if (read_name.compare(0, read_name.size(), line, 1, read_name.size()) && (line.size() == read_name.size() + 1 || isspace(line[read_name.size() + 1]))) {
+			if (!read_name.compare(0, read_name.size(), line, 1, read_name.size()) && (line.size() == read_name.size() + 1 || isspace(line[read_name.size() + 1]))) {
 				seq.clear();
 				while (pfgets(fd, line) != -1 && line[0] != '>') {
 					seq += line;
@@ -123,7 +123,7 @@ void hash_metadata::read_file(const size_t i) {
 				exit(1);
 			}
 			const std::string &read_name(reads[i][j]);
-			if (read_name.compare(0, read_name.size(), line, 1, read_name.size()) && (line.size() == read_name.size() + 1 || isspace(line[read_name.size() + 1]))) {
+			if (!read_name.compare(0, read_name.size(), line, 1, read_name.size()) && (line.size() == read_name.size() + 1 || isspace(line[read_name.size() + 1]))) {
 				get_subreads(seq, read_ranges[i][j]);
 				++j;
 			}
@@ -145,6 +145,7 @@ void hash_metadata::read_file(const size_t i) {
 	close_compressed(fd);
 }
 
+// only modifies convenience variables, not actual data
 const hashl::base_type *hash_metadata::read_data(size_t &data_size) {
 	// length of all stored sequence
 	size_t sequence_size(0);
@@ -252,31 +253,31 @@ const void *hash_metadata::pack(size_t &metadata_size) const {
 		}
 	}
 	// allocate space
-	char * const d(new char[metadata_size]);
-	size_t offset(0);
+	char * const d_out(new char[metadata_size]);
+	char *d(d_out);
 	uint64_t tmp;
 	// fill space with metadata
-	memcpy(d + offset, &(tmp = files.size()), sizeof(tmp));
-	offset += sizeof(tmp);
+	memcpy(d, &(tmp = files.size()), sizeof(tmp));
+	d += sizeof(tmp);
 	for (size_t i(0); i < files.size(); ++i) {
-		memcpy(d + offset, &files[i].c_str()[0], files[i].size() + 1);
-		offset += files[i].size() + 1;
-		memcpy(d + offset, &(tmp = reads.size()), sizeof(tmp));
-		offset += sizeof(tmp);
+		memcpy(d, files[i].c_str(), files[i].size() + 1);
+		d += files[i].size() + 1;
+		memcpy(d, &(tmp = reads.size()), sizeof(tmp));
+		d += sizeof(tmp);
 		for (size_t j(0); j < reads[i].size(); ++j) {
-			memcpy(d + offset, &reads[i][j].c_str()[0], reads[i][j].size() + 1);
-			offset += reads[i][j].size() + 1;
-			memcpy(d + offset, &(tmp = read_ranges[i][j].size()), sizeof(tmp));
-			offset += sizeof(tmp);
+			memcpy(d, reads[i][j].c_str(), reads[i][j].size() + 1);
+			d += reads[i][j].size() + 1;
+			memcpy(d, &(tmp = read_ranges[i][j].size()), sizeof(tmp));
+			d += sizeof(tmp);
 			for (size_t k(0); k < read_ranges[i][j].size(); ++k) {
-				memcpy(d + offset, &read_ranges[i][j][k].first, sizeof(uint64_t));
-				offset += sizeof(uint64_t);
-				memcpy(d + offset, &read_ranges[i][j][k].second, sizeof(uint64_t));
-				offset += sizeof(uint64_t);
+				memcpy(d, &read_ranges[i][j][k].first, sizeof(uint64_t));
+				d += sizeof(uint64_t);
+				memcpy(d, &read_ranges[i][j][k].second, sizeof(uint64_t));
+				d += sizeof(uint64_t);
 			}
 		}
 	}
-	return d;
+	return d_out;
 }
 
 void hash_metadata::unpack(const char *d) {
