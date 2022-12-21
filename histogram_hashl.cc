@@ -14,6 +14,7 @@
 #include <string>	// string
 #include <utility>	// make_pair(), pair<>
 #include <vector>	// vector<>
+#include <deque>	// deque<>
 
 class hash_data {
     private:
@@ -21,23 +22,41 @@ class hash_data {
 	std::vector<std::vector<std::string> > reads;
 	// inclusive start, exclusive end
 	std::vector<std::vector<std::vector<std::pair<uint64_t, uint64_t> > > > read_ranges;
-	std::vector<hashl::base_type> data;
+	std::deque<hashl::base_type> data;
     public:
 	hash_data(void) { }
 	~hash_data(void) { }
-	void add_file(const std::string &);		// add new file
-	void add_read(const std::string &);		// add new read at current file
-	void add_read_range(uint64_t, uint64_t);	// add new read range at current read
-	void finalize(void);				// remove last adds if empty
-	const void *pack_metadata(void) const;
+	void read_file(const std::string &);
+	const void *pack_metadata(size_t &) const;
 	void unpack_metadata(const char *);
 	void print_metadata(void) const;
-	void read_data(void);
     private:
 	void read_file(size_t, size_t &);
 	void get_subreads(const std::vector<std::pair<uint64_t, uint64_t> > &, const std::string &, size_t &);
 	void copy_data(const std::string &, size_t, size_t, size_t);
+	static hashl::base_type hash_data::convert_char(char) const;
 };
+
+// return 0-3, exit for bad sequence
+hashl::base_type hash_data::convert_char(const char c) {
+	switch (c) {
+	    case 'A':
+	    case 'a':
+		return 0;
+	    case 'C':
+	    case 'c':
+		return 1;
+	    case 'G':
+	    case 'g':
+		return 2;
+	    case 'T':
+	    case 't':
+		return 3;
+	    default:
+		fprintf(stderr, "Error: non-ACGT basepair: %c\n", c);
+		exit(1);
+	}
+}
 
 // sequence is stored from top bits to bottom bits of each offset
 void hash_data::copy_data(const std::string &seq, size_t k, const size_t end_k, size_t data_offset) {
@@ -584,15 +603,13 @@ static void get_subread_sizes(const std::string &seq, size_t &metadata_size, siz
 }
 
 // read file and get total space needed for data and metadata
-static void get_read_sizes(const char * const file, size_t &metadata_size, size_t &data_size, size_t &max_kmers, std::vector<size_t> &read_ends) {
-	const int fd(open_compressed(file));
+void hash_data::get_read_sizes(hash_data &file_data) {
+	const int fd(open_compressed(files.last()));
 	if (fd == -1) {
-		fprintf(stderr, "Error: open: %s\n", file);
+		fprintf(stderr, "Error: open: %s\n", files.last().c_str());
 		exit(1);
 	}
 	std::string line, seq;
-	std::vector<std::pair<size_t, size_t> > subreads;	// offset, length
-	std::ostringstream x;
 	if (pfgets(fd, line) == -1) {		// empty file
 		fprintf(stderr, "Warning: empty file: %s\n", file);
 	} else if (line[0] == '>') {		// fasta file
@@ -603,7 +620,7 @@ static void get_read_sizes(const char * const file, size_t &metadata_size, size_
 			while (pfgets(fd, line) != -1 && line[0] != '>') {
 				seq += line;
 			}
-			get_subread_sizes(seq, metadata_size, data_size, max_kmers, read_ends, i);
+			get_subread_sizes(seq);
 		} while (!line.empty());
 	} else if (line[0] == '@') {		// fastq file
 		do {
@@ -629,116 +646,6 @@ static void get_read_sizes(const char * const file, size_t &metadata_size, size_
 	if (!read_ends.empty()) {	// only count if we're not going to skip the file
 		metadata_size += strlen(file) + 1 + read_ends.size() * sizeof(uint64_t);
 	}
-}
-
-// return 0-3, exit for bad sequence
-static hashl::base_type convert_char(const char c) {
-	switch (c) {
-	    case 'A':
-	    case 'a':
-		return 0;
-	    case 'C':
-	    case 'c':
-		return 1;
-	    case 'G':
-	    case 'g':
-		return 2;
-	    case 'T':
-	    case 't':
-		return 3;
-	    default:
-		fprintf(stderr, "Error: non-ACGT basepair: %c\n", c);
-		exit(1);
-	}
-}
-
-// sequence is stored from top bits to bottom bits of each offset
-static void copy_data(const std::string &seq, size_t k, const size_t end_k, hashl::base_type * const data, size_t data_offset) {
-	size_t i((2 * data_offset) / (sizeof(hashl::base_type) * 8));
-	size_t j(sizeof(hashl::base_type) * 8 - (2 * data_offset) % (sizeof(hashl::base_type) * 8));
-	for (; k < end_k; ++k) {
-		if (j) {
-			j -= 2;
-			data[i] |= convert_char(seq[k]) << j;
-		} else {
-			j = sizeof(hashl::base_type) * 8 - 2;
-			data[++i] = convert_char(seq[k]) << j;
-		}
-	}
-}
-
-// need to split reads on non-ACGT basepairs
-static void get_subreads(const std::string &header, const std::string &seq, char *metadata, hashl::base_type *data, size_t &metadata_offset, size_t &data_offset) {
-	size_t i(seq.find_first_of("ACGTacgt", 0));
-	while (i != std::string::npos) {
-		size_t next(seq.find_first_not_of("ACGTacgt", i));
-		if (next == std::string::npos) {
-			next = seq.size();
-		}
-		// reads shorter than the mer length are skipped
-		if (next - i >= opt_mer_length) {
-			// add start offset if we're splitting the read
-			if (i || next < seq.size()) {
-				memcpy(metadata + metadata_offset, &header.c_str()[1], header.size() - 1);
-				metadata_offset += header.size() - 1;
-				std::ostringstream x;
-				x << ":" << i;		// convert offset to text
-				memcpy(metadata + metadata_offset, &x.str().c_str()[0], x.str().size() + 1);
-				metadata_offset += x.str().size() + 1;	// includes trailing null
-			} else {
-				memcpy(metadata + metadata_offset, &header.c_str()[1], header.size());
-				metadata_offset += header.size();	// includes trailing null
-			}
-			copy_data(seq, i, next, data, data_offset);
-			data_offset += next - i;
-		}
-		i = seq.find_first_of("ACGTacgt", next);
-	}
-}
-
-static void read_file(const char * const file, char *metadata, hashl::base_type *data, size_t &metadata_offset, size_t &data_offset) {
-	const int fd(open_compressed(file));
-	if (fd == -1) {
-		fprintf(stderr, "Error: open: %s\n", file);
-		exit(1);
-	}
-	std::string line, seq;
-	if (pfgets(fd, line) == -1) {		// empty file
-		fprintf(stderr, "Warning: empty file: %s\n", file);
-	} else if (line[0] == '>') {		// fasta file
-		std::string header;
-		do {
-			size_t i(1);
-			for (; i < line.size() && !isspace(line[i]); ++i) { }
-			header = line.substr(0, i);
-			seq.clear();
-			while (pfgets(fd, line) != -1 && line[0] != '>') {
-				seq += line;
-			}
-			get_subreads(header, seq, metadata, data, metadata_offset, data_offset);
-		} while (line[0] == '>');	// safe after eof
-	} else if (line[0] == '@') {		// fastq file
-		do {
-			if (pfgets(fd, seq) == -1) {		// sequence
-				fprintf(stderr, "Error: truncated fastq file: %s\n", file);
-				exit(1);
-			}
-			size_t i(1);
-			for (; i < line.size() && !isspace(line[i]); ++i) { }
-			line.resize(i);
-			get_subreads(line, seq, metadata, data, metadata_offset, data_offset);
-			// skip quality header and quality
-			// (use seq because it'll be the same length as quality)
-			if (pfgets(fd, line) == -1 || pfgets(fd, seq) == -1) {
-				fprintf(stderr, "Error: truncated fastq file: %s\n", file);
-				exit(1);
-			}
-		} while (pfgets(fd, line) != -1);
-	} else {
-		fprintf(stderr, "Error: unknown file format: %s\n", file);
-		exit(1);
-	}
-	close_compressed(fd);
 }
 
 static void count_nmers(hashl &mer_list, const hashl::base_type * const data, const std::vector<std::vector<uint64_t> > &read_ends) {
@@ -793,59 +700,29 @@ static void count_nmers(hashl &mer_list, const hashl::base_type * const data, co
 	}
 }
 
-// metadata format: # of files, [ filename, # of reads, read offsets, read names ]
-// strings are null delimited, # and read lengths are uint64_t
-// hashl boilerplate check will ensure byte order is the same read as written
-
-static void read_in_files(int argc, char **argv, hashl &mer_list) {
-	size_t total_reads(0);
+// XXX - this is a horrible mess and needs to be at least partially reverted
+static void read_files(int argc, char **argv, hashl &mer_list) {
+	hash_data file_data;
 	const uint64_t file_count(argc - optind);
-	// leave room for counts for number of files and reads per file
-	size_t metadata_size((file_count + 1) * sizeof(uint64_t)), data_size(0), max_kmers(0);
-	std::vector<std::vector<uint64_t> > read_ends(file_count, std::vector<size_t>());
 	for (size_t i(0); i < file_count; ++i) {
 		if (opt_feedback) {
-			fprintf(stderr, "%lu: Getting read sizes for %s\n", time(0), argv[i + optind]);
+			fprintf(stderr, "%lu: Reading %s\n", time(0), argv[i + optind]);
 		}
-		get_read_sizes(argv[i + optind], metadata_size, data_size, max_kmers, read_ends[i]);
-		total_reads += read_ends[i].size();
-	}
-	// allocate arrays for data and metadata
-	char *metadata(new char[metadata_size]);
-	// convert data size from basepairs to length of hashl::base_type array
-	data_size = (2 * data_size + sizeof(hashl::base_type) * 8 - 1) / (sizeof(hashl::base_type) * 8);
-	hashl::base_type *data(new hashl::base_type[data_size]);
-	data[0] = 0;	// need to initialize first value
-	memcpy(metadata, &file_count, sizeof(file_count));
-	size_t metadata_offset(sizeof(file_count)), data_offset(0);
-	for (size_t i(0); i < file_count; ++i) {
-		if (read_ends[i].empty()) {			// skip empty files
-			continue;
-		}
-		if (opt_feedback) {
-			fprintf(stderr, "%lu: Reading in %s\n", time(0), argv[i + optind]);
-		}
-		const size_t name_length(strlen(argv[i + optind]) + 1);	// include trailing null
-		memcpy(metadata + metadata_offset, argv[i + optind], name_length);
-		metadata_offset += name_length;
-		uint64_t x(read_ends[i].size());
-		memcpy(metadata + metadata_offset, &x, sizeof(x));
-		metadata_offset += sizeof(x);
-		memcpy(metadata + metadata_offset, &read_ends[i][0], x * sizeof(uint64_t));
-		metadata_offset += x * sizeof(uint64_t);
-		read_file(argv[i + optind], metadata, data, metadata_offset, data_offset);
+		file_data.read_file(argv[i + optind]);
 	}
 	if (opt_feedback) {
 		fprintf(stderr, "%lu: Initializing n-mer hash\n", time(0));
 	}
 	// put data and metadata into mer_list
-	mer_list.init(opt_nmers ? opt_nmers : max_kmers, opt_mer_length * 2, data, data_size);
+	mer_list.init(opt_nmers ? opt_nmers : file_data.max_kmers(), opt_mer_length * 2, file_data.data());
+	size_t metadata_size;
+	const void *metadata(file_data.pack(metadata_size));
 	mer_list.set_metadata(metadata, metadata_size);
 	if (opt_feedback) {
 		fprintf(stderr, "%lu: Counting n-mers for %lu reads\n", time(0), total_reads);
 		start_time();
 	}
-	count_nmers(mer_list, data, read_ends);
+	count_nmers(mer_list, file_data);
 	if (opt_feedback) {
 		print_final_input_feedback(mer_list);
 	}
@@ -860,7 +737,7 @@ static void read_in_files(int argc, char **argv, hashl &mer_list) {
 			fprintf(stderr, "%lu: Recounting n-mers\n", time(0));
 			start_time();
 		}
-		count_nmers(mer_list, data, read_ends);
+		count_nmers(mer_list, file_data);
 		if (opt_feedback) {
 			print_final_input_feedback(mer_list);
 		}
@@ -880,7 +757,7 @@ int main(int argc, char **argv) {
 		}
 	}
 	if (optind != argc) {
-		read_in_files(argc, argv, mer_list);
+		read_files(argc, argv, mer_list);
 	}
 	if (opt_feedback) {
 		fprintf(stderr, "%lu: Printing results\n", time(0));
