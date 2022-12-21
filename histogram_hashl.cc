@@ -6,6 +6,7 @@
 #include <getopt.h>	// getopt(), optarg, optind
 #include <list>		// list<>
 #include <map>		// map<>
+#include <set>		// set<>
 #include <sstream>	// istringstream, ostringstream
 #include <stdint.h>	// uint64_t
 #include <stdio.h>	// EOF, fprintf(), stderr, stdout
@@ -14,31 +15,48 @@
 #include <string>	// string
 #include <utility>	// make_pair(), pair<>
 #include <vector>	// vector<>
-#include <deque>	// deque<>
 
-class hash_data {
+static FILE *fp_out(stdout);
+static bool opt_feedback;
+static bool opt_print_gc;
+static double opt_load_lower_bound;
+static double opt_load_upper_bound;
+static int opt_histogram_restore;
+static size_t opt_mer_length;
+static size_t opt_nmers;
+static std::string opt_save_file;
+static unsigned long opt_frequency_cutoff;
+
+class hash_metadata {
+    private:				// convenience variables for read_data()
+	hashl::base_type *data;
+	size_t byte_offset, bit_offset;
     private:
 	std::vector<std::string> files;
 	std::vector<std::vector<std::string> > reads;
 	// inclusive start, exclusive end
 	std::vector<std::vector<std::vector<std::pair<uint64_t, uint64_t> > > > read_ranges;
-	std::deque<hashl::base_type> data;
     public:
-	hash_data(void) { }
-	~hash_data(void) { }
-	void read_file(const std::string &);
-	const void *pack_metadata(size_t &) const;
-	void unpack_metadata(const char *);
-	void print_metadata(void) const;
+	hash_metadata(void) { }
+	~hash_metadata(void) { }
+	void add_file(const std::string &);		// add new file
+	void add_read(const std::string &);		// add new read at current file
+	void add_read_range(uint64_t, uint64_t);	// add new read range at current read
+	void finalize(void);				// remove last adds if empty
+	const void *pack(size_t &) const;
+	void unpack(const char *);
+	void print(void) const;
+	const hashl::base_type *read_data(size_t &);
+	std::pair<size_t, size_t> total_reads(void) const;	// reads & read ranges
+	size_t max_kmers(void) const;
+	std::vector<size_t> read_ends(void) const;
     private:
-	void read_file(size_t, size_t &);
-	void get_subreads(const std::vector<std::pair<uint64_t, uint64_t> > &, const std::string &, size_t &);
-	void copy_data(const std::string &, size_t, size_t, size_t);
-	static hashl::base_type hash_data::convert_char(char) const;
+	void read_file(size_t);
+	void get_subreads(const std::string &, const std::vector<std::pair<uint64_t, uint64_t> > &);
 };
 
 // return 0-3, exit for bad sequence
-hashl::base_type hash_data::convert_char(const char c) {
+static hashl::base_type convert_char(const char c) {
 	switch (c) {
 	    case 'A':
 	    case 'a':
@@ -58,38 +76,31 @@ hashl::base_type hash_data::convert_char(const char c) {
 	}
 }
 
-// sequence is stored from top bits to bottom bits of each offset
-void hash_data::copy_data(const std::string &seq, size_t k, const size_t end_k, size_t data_offset) {
-	size_t i((2 * data_offset) / (sizeof(hashl::base_type) * 8));
-	size_t j(sizeof(hashl::base_type) * 8 - (2 * data_offset) % (sizeof(hashl::base_type) * 8));
-	for (; k < end_k; ++k) {
-		if (j) {
-			j -= 2;
-			data[i] |= convert_char(seq[k]) << j;
-		} else {
-			j = sizeof(hashl::base_type) * 8 - 2;
-			data[++i] = convert_char(seq[k]) << j;
+void hash_metadata::get_subreads(const std::string &seq, const std::vector<std::pair<uint64_t, uint64_t> > &ranges) {
+	for (size_t i(0); i < ranges.size(); ++i) {
+		for (size_t j(ranges[i].first); j < ranges[i].second; ++j) {
+			if (bit_offset) {
+				bit_offset -= 2;
+				data[byte_offset] |= convert_char(seq[j]) << j;
+			} else {
+				bit_offset = sizeof(hashl::base_type) * 8 - 2;
+				data[++byte_offset] = convert_char(seq[j]) << j;
+			}
 		}
 	}
 }
 
-void hash_data::get_subreads(const std::vector<std::pair<uint64_t, uint64_t> > &ranges, const std::string &seq, size_t &data_offset) {
-	for (size_t k(0); k < ranges.size(); ++k) {
-		copy_data(seq, ranges[k].first, ranges[k].second, data_offset);
-		data_offset += ranges[k].second - ranges[k].first;
-	}
-}
-
-void hash_data::read_file(const size_t i, size_t &data_offset) {
+void hash_metadata::read_file(const size_t i) {
 	const int fd(open_compressed(files[i]));
 	if (fd == -1) {
 		fprintf(stderr, "Error: open: %s\n", files[i].c_str());
 		exit(1);
 	}
-	size_t j(0);
+	size_t j(0);	// which read we're on (but only incremented for reads we use)
 	std::string line, seq;
 	if (pfgets(fd, line) == -1) {		// empty file
-		fprintf(stderr, "Warning: empty file: %s\n", files[i].c_str());
+		fprintf(stderr, "Error: File is now empty: %s\n", files[i].c_str());
+		exit(1);
 	} else if (line[0] == '>') {		// fasta file
 		std::string header;
 		do {
@@ -99,12 +110,12 @@ void hash_data::read_file(const size_t i, size_t &data_offset) {
 				while (pfgets(fd, line) != -1 && line[0] != '>') {
 					seq += line;
 				}
-				get_subreads(read_ranges[i][j], seq, data_offset);
+				get_subreads(seq, read_ranges[i][j]);
 				++j;
 			} else {
 				while (pfgets(fd, line) != -1 && line[0] != '>') { }
 			}
-		} while (line[0] == '>');	// safe after eof
+		} while (j < reads[i].size() && line[0] == '>');
 	} else if (line[0] == '@') {		// fastq file
 		do {
 			if (pfgets(fd, seq) == -1) {		// sequence
@@ -113,7 +124,7 @@ void hash_data::read_file(const size_t i, size_t &data_offset) {
 			}
 			const std::string &read_name(reads[i][j]);
 			if (read_name.compare(0, read_name.size(), line, 1, read_name.size()) && (line.size() == read_name.size() + 1 || isspace(line[read_name.size() + 1]))) {
-				get_subreads(read_ranges[i][j], seq, data_offset);
+				get_subreads(seq, read_ranges[i][j]);
 				++j;
 			}
 			// skip quality header and quality
@@ -122,58 +133,105 @@ void hash_data::read_file(const size_t i, size_t &data_offset) {
 				fprintf(stderr, "Error: truncated fastq file: %s\n", files[i].c_str());
 				exit(1);
 			}
-		} while (pfgets(fd, line) != -1);
+		} while (j < reads[i].size() && pfgets(fd, line) != -1);
 	} else {
 		fprintf(stderr, "Error: unknown file format: %s\n", files[i].c_str());
+		exit(1);
+	}
+	if (j < reads[i].size()) {
+		fprintf(stderr, "Error: File is shorter than before: %s\n", files[i].c_str());
 		exit(1);
 	}
 	close_compressed(fd);
 }
 
-void hash_data::read_data() {
-	// count space needed for data
-	size_t data_size(0);
+const hashl::base_type *hash_metadata::read_data(size_t &data_size) {
+	// length of all stored sequence
+	size_t sequence_size(0);
 	for (size_t i(0); i < files.size(); ++i) {
 		for (size_t j(0); j < reads[i].size(); ++j) {
 			for (size_t k(0); k < read_ranges[i][j].size(); ++k) {
-				data_size += read_ranges[i][j][k].second - read_ranges[i][j][k].first;
+				sequence_size += read_ranges[i][j][k].second - read_ranges[i][j][k].first;
 			}
 		}
 	}
-	// convert data size from basepairs to length of hashl::base_type array
-	data_size = (2 * data_size + sizeof(hashl::base_type) * 8 - 1) / (sizeof(hashl::base_type) * 8);
-	data.assign(data_size, 0);
-	size_t data_offset(0);
+	// convert size from basepairs to length of hashl::base_type array
+	data_size = (2 * sequence_size + sizeof(hashl::base_type) * 8 - 1) / (sizeof(hashl::base_type) * 8);
+	data = new hashl::base_type[data_size];
+	data[0] = 0;
+	byte_offset = 0;
+	bit_offset = sizeof(hashl::base_type) * 8;
 	for (size_t i(0); i < files.size(); ++i) {
-		read_file(i, data_offset);
+		if (opt_feedback) {
+			fprintf(stderr, "%lu: Reading in %s\n", time(0), files[i].c_str());
+		}
+		read_file(i);
 	}
+	return data;
 }
 
-void hash_data::add_file(const std::string &file_name) {
+std::pair<size_t, size_t> hash_metadata::total_reads() const {
+	size_t read_count(0), subread_count(0);
+	for (size_t i(0); i < files.size(); ++i) {
+		read_count += reads[i].size();
+		for (size_t j(0); j < reads[i].size(); ++j) {
+			subread_count += read_ranges[i][j].size();
+		}
+	}
+	return std::make_pair(read_count, subread_count);
+}
+
+size_t hash_metadata::max_kmers() const {
+	size_t x(0);
+	for (size_t i(0); i < files.size(); ++i) {
+		for (size_t j(0); j < reads[i].size(); ++j) {
+			for (size_t k(0); k < read_ranges[i][j].size(); ++k) {
+				x += read_ranges[i][j][k].second - read_ranges[i][j][k].first - opt_mer_length + 1;
+			}
+		}
+	}
+	return x;
+}
+
+std::vector<size_t> hash_metadata::read_ends() const {
+	std::vector<size_t> list;
+	size_t x(0);
+	for (size_t i(0); i < files.size(); ++i) {
+		for (size_t j(0); j < reads[i].size(); ++j) {
+			for (size_t k(0); k < read_ranges[i][j].size(); ++k) {
+				x += read_ranges[i][j][k].second - read_ranges[i][j][k].first;
+				list.push_back(x);
+			}
+		}
+	}
+	return list;
+}
+
+void hash_metadata::add_file(const std::string &file_name) {
 	finalize();
 	files.push_back(file_name);
 	reads.push_back(std::vector<std::string>());
 	read_ranges.push_back(std::vector<std::vector<std::pair<uint64_t, uint64_t> > >());
 }
 
-void hash_data::add_read(const std::string &read_name) {
-	reads.last().push_back(read_name);
-	read_ranges.last().push_back(std::vector<std::pair<uint64_t, uint64_t> >());
+void hash_metadata::add_read(const std::string &read_name) {
+	reads.back().push_back(read_name);
+	read_ranges.back().push_back(std::vector<std::pair<uint64_t, uint64_t> >());
 }
 
-void hash_data::add_read_range(const uint64_t start, const uint64_t end) {
-	read_ranges.last().last().push_back(std::make_pair(start, end));
+void hash_metadata::add_read_range(const uint64_t start, const uint64_t end) {
+	read_ranges.back().back().push_back(std::make_pair(start, end));
 }
 
-void hash_data::finalize() {
+void hash_metadata::finalize() {
 	if (!files.empty()) {
 		// check if last read of last file had any ranges
-		if (read_ranges.last().last().empty()) {
-			read_ranges.last().pop_back();
-			reads.last().pop_back();
+		if (read_ranges.back().back().empty()) {
+			read_ranges.back().pop_back();
+			reads.back().pop_back();
 		}
 		// check if last file had any reads
-		if (read_ranges.last().empty()) {
+		if (read_ranges.back().empty()) {
 			read_ranges.pop_back();
 			reads.pop_back();
 			files.pop_back();
@@ -181,51 +239,39 @@ void hash_data::finalize() {
 	}
 }
 
-void hash_data::print_metadata() const {
-	for (size_t i(0); i < files.size(); ++i) {
-		printf("%s\n", files[i].c_str());
-		for (size_t j(0); j < reads[i].size(); ++j) {
-			printf("\t%s\n", reads[i][j].c_str());
-			for (size_t k(0); k < read_ranges[i][j].size(); ++k) {
-				printf("\t\t%lu %lu\n", read_ranges[i][j][k].first, read_ranges[i][j][k].second);
-			}
-		}
-	}
-}
-
-const void *hash_data::pack_metadata() const {
+const void *hash_metadata::pack(size_t &metadata_size) const {
 	// count space needed
-	size_t total_size(sizeof(uint64_t));			// number of files
+	metadata_size = sizeof(uint64_t);				// number of files
 	for (size_t i(0); i < files.size(); ++i) {
-		total_size += files[i].size() + 1;		// file name and null
-		total_size += sizeof(uint64_t);			// number of reads
+		metadata_size += files[i].size() + 1;			// file name and null
+		metadata_size += sizeof(uint64_t);			// number of reads
 		for (size_t j(0); j < reads[i].size(); ++j) {
-			total_size += reads[i][j].size() + 1; 	// read name and null
-			total_size += sizeof(uint64_t);		// number of ranges
-			total_size += read_ranges[i][j].size() * sizeof(uint64_t) * 2;
+			metadata_size += reads[i][j].size() + 1;	// read name and null
+			metadata_size += sizeof(uint64_t);		// number of ranges
+			metadata_size += read_ranges[i][j].size() * sizeof(uint64_t) * 2;
 		}
 	}
 	// allocate space
-	char *d(new char[total_size]);
+	char * const d(new char[metadata_size]);
 	size_t offset(0);
 	uint64_t tmp;
 	// fill space with metadata
-	mempcy(d + offset, &(tmp = files.size()), sizeof(tmp));
+	memcpy(d + offset, &(tmp = files.size()), sizeof(tmp));
 	offset += sizeof(tmp);
 	for (size_t i(0); i < files.size(); ++i) {
-		mempcy(d + offset, &files[i].c_str()[0], files[i].size() + 1);
+		memcpy(d + offset, &files[i].c_str()[0], files[i].size() + 1);
 		offset += files[i].size() + 1;
-		mempcy(d + offset, &(tmp = reads.size()), sizeof(tmp));
+		memcpy(d + offset, &(tmp = reads.size()), sizeof(tmp));
 		offset += sizeof(tmp);
 		for (size_t j(0); j < reads[i].size(); ++j) {
-			mempcy(d + offset, &reads[i][j].c_str()[0], reads[i][j].size() + 1);
+			memcpy(d + offset, &reads[i][j].c_str()[0], reads[i][j].size() + 1);
 			offset += reads[i][j].size() + 1;
-			mempcy(d + offset, &(tmp = read_ranges[i][j].size()), sizeof(tmp));
+			memcpy(d + offset, &(tmp = read_ranges[i][j].size()), sizeof(tmp));
 			offset += sizeof(tmp);
 			for (size_t k(0); k < read_ranges[i][j].size(); ++k) {
-				mempcy(d + offset, &read_ranges[i][j][k].first, sizeof(uint64_t));
+				memcpy(d + offset, &read_ranges[i][j][k].first, sizeof(uint64_t));
 				offset += sizeof(uint64_t);
-				mempcy(d + offset, &read_ranges[i][j][k].second, sizeof(uint64_t));
+				memcpy(d + offset, &read_ranges[i][j][k].second, sizeof(uint64_t));
 				offset += sizeof(uint64_t);
 			}
 		}
@@ -233,9 +279,9 @@ const void *hash_data::pack_metadata() const {
 	return d;
 }
 
-void hash_data::unpack_metadata(const char * d) {
+void hash_metadata::unpack(const char *d) {
 	uint64_t file_count;
-	mempcy(&file_count, d, sizeof(file_count));
+	memcpy(&file_count, d, sizeof(file_count));
 	d += sizeof(file_count);
 	files.clear();
 	files.reserve(file_count);
@@ -243,17 +289,17 @@ void hash_data::unpack_metadata(const char * d) {
 	read_ranges.assign(file_count, std::vector<std::vector<std::pair<uint64_t, uint64_t> > >());
 	for (size_t i(0); i < file_count; ++i) {
 		files.push_back(d);
-		d += files.last().size() + 1;
+		d += files.back().size() + 1;
 		uint64_t read_count;
-		mempcy(&read_count, d, sizeof(read_count));
+		memcpy(&read_count, d, sizeof(read_count));
 		d += sizeof(read_count);
 		reads[i].reserve(read_count);
 		read_ranges[i].assign(read_count, std::vector<std::pair<uint64_t, uint64_t> >());
 		for (size_t j(0); j < read_count; ++j) {
 			reads[i].push_back(d);
-			d += reads[i].last().size() + 1;
+			d += reads[i].back().size() + 1;
 			uint64_t read_range_count;
-			mempcy(&read_range_count, d, sizeof(read_range_count));
+			memcpy(&read_range_count, d, sizeof(read_range_count));
 			d += sizeof(read_range_count);
 			read_ranges[i][j].reserve(read_range_count);
 			for (size_t k(0); k < read_range_count; ++k) {
@@ -268,7 +314,7 @@ void hash_data::unpack_metadata(const char * d) {
 	}
 }
 
-void hash_data::print() const {
+void hash_metadata::print() const {
 	for (size_t i(0); i < files.size(); ++i) {
 		printf("%s\n", files[i].c_str());
 		for (size_t j(0); j < reads[i].size(); ++j) {
@@ -279,17 +325,6 @@ void hash_data::print() const {
 		}
 	}
 }
-
-static FILE *fp_out(stdout);
-static bool opt_feedback;
-static bool opt_print_gc;
-static double opt_load_lower_bound;
-static double opt_load_upper_bound;
-static int opt_histogram_restore;
-static size_t opt_mer_length;
-static size_t opt_nmers;
-static std::string opt_save_file;
-static unsigned long opt_frequency_cutoff;
 
 static void save_memory(const hashl &mer_list) {
 	std::string suffix;
@@ -508,14 +543,14 @@ static void get_opts(int argc, char **argv) {
 			break;
 		    case 'o':
 			opt_output = optarg;
-			if (!used_files.insert(optarg)->second) {
+			if (!used_files.insert(optarg).second) {
 				fprintf(stderr, "Error: duplicate file: %s\n", optarg);
 				exit(1);
 			}
 			break;
 		    case 's':
 			opt_save_file = optarg;
-			if (!used_files.insert(optarg)->second) {
+			if (!used_files.insert(optarg).second) {
 				fprintf(stderr, "Error: duplicate file: %s\n", optarg);
 				exit(1);
 			}
@@ -525,7 +560,7 @@ static void get_opts(int argc, char **argv) {
 			if (opt_histogram_restore == -1) {
 				fprintf(stderr, "Error: could not read histogram dump file\n");
 				exit(1);
-			} else if (!used_files.insert(optarg)->second) {
+			} else if (!used_files.insert(optarg).second) {
 				fprintf(stderr, "Error: duplicate file: %s\n", optarg);
 				exit(1);
 			}
@@ -559,7 +594,7 @@ static void get_opts(int argc, char **argv) {
 		print_usage();
 	}
 	for (int i(optind); i < argc; ++i) {
-		if (!used_files.insert(argv[i])->second) {
+		if (!used_files.insert(argv[i]).second) {
 			fprintf(stderr, "Error: duplicate file: %s\n", argv[i]);
 			exit(1);
 		}
@@ -575,7 +610,7 @@ static void get_opts(int argc, char **argv) {
 
 // for non-ACGT basepairs, need to split reads
 
-static void get_subread_sizes(const std::string &seq, size_t &metadata_size, size_t &data_size, size_t &max_kmers, std::vector<size_t> &read_ends, const size_t header_size) {
+static void get_subread_sizes(const std::string &seq, hash_metadata &metadata) {
 	size_t i(seq.find_first_of("ACGTacgt", 0));
 	while (i != std::string::npos) {
 		size_t next(seq.find_first_not_of("ACGTacgt", i));
@@ -584,29 +619,17 @@ static void get_subread_sizes(const std::string &seq, size_t &metadata_size, siz
 		}
 		// reads shorter than the mer length are skipped
 		if (next - i >= opt_mer_length) {
-			// make room for offset if we're splitting the read
-			if (i || next < seq.size()) {
-				std::ostringstream x;
-				x << i;		// convert offset to text
-				// +1 for separator
-				metadata_size += header_size + 1 + x.str().size();
-			} else {
-				// don't need the offset
-				metadata_size += header_size;
-			}
-			data_size += next - i;
-			max_kmers += next - i - opt_mer_length + 1;
-			read_ends.push_back(data_size);
+			metadata.add_read_range(i, next);
 		}
 		i = seq.find_first_of("ACGTacgt", next);
 	}
 }
 
 // read file and get total space needed for data and metadata
-void hash_data::get_read_sizes(hash_data &file_data) {
-	const int fd(open_compressed(files.last()));
+static void get_read_sizes(const char * const file, hash_metadata &metadata) {
+	const int fd(open_compressed(file));
 	if (fd == -1) {
-		fprintf(stderr, "Error: open: %s\n", files.last().c_str());
+		fprintf(stderr, "Error: open: %s\n", file);
 		exit(1);
 	}
 	std::string line, seq;
@@ -616,21 +639,23 @@ void hash_data::get_read_sizes(hash_data &file_data) {
 		do {
 			size_t i(1);
 			for (; i < line.size() && !isspace(line[i]); ++i) { }
+			metadata.add_read(line.substr(1, i - 1));
 			seq.clear();
 			while (pfgets(fd, line) != -1 && line[0] != '>') {
 				seq += line;
 			}
-			get_subread_sizes(seq);
+			get_subread_sizes(seq, metadata);
 		} while (!line.empty());
 	} else if (line[0] == '@') {		// fastq file
 		do {
 			size_t i(1);
 			for (; i < line.size() && !isspace(line[i]); ++i) { }
+			metadata.add_read(line.substr(1, i - 1));
 			if (pfgets(fd, seq) == -1) {		// sequence
 				fprintf(stderr, "Error: truncated fastq file: %s\n", file);
 				exit(1);
 			}
-			get_subread_sizes(seq, metadata_size, data_size, max_kmers, read_ends, i);
+			get_subread_sizes(seq, metadata);
 			// skip quality header and quality
 			// (use seq because it'll be the same length as quality)
 			if (pfgets(fd, line) == -1 || pfgets(fd, seq) == -1) {
@@ -643,86 +668,84 @@ void hash_data::get_read_sizes(hash_data &file_data) {
 		exit(1);
 	}
 	close_compressed(fd);
-	if (!read_ends.empty()) {	// only count if we're not going to skip the file
-		metadata_size += strlen(file) + 1 + read_ends.size() * sizeof(uint64_t);
-	}
 }
 
-static void count_nmers(hashl &mer_list, const hashl::base_type * const data, const std::vector<std::vector<uint64_t> > &read_ends) {
+static void count_nmers(hashl &mer_list, const hashl::base_type * const data, const std::vector<size_t> &read_ends) {
 	hashl::key_type key(mer_list), comp_key(mer_list);
-	uint64_t i(0);		// match type of read_ends
 	size_t total_reads(0);
-	// iterate over all files
-	std::vector<std::vector<uint64_t> >::const_iterator a(read_ends.begin());
-	const std::vector<std::vector<uint64_t> >::const_iterator end_a(read_ends.end());
-	for (; a != end_a; ++a) {
-		// iterate over all reads in file (nmers can't cross read boundaries)
-		std::vector<uint64_t>::const_iterator b(a->begin());
-		const std::vector<uint64_t>::const_iterator end_b(a->end());
-		for (; b != end_b; ++b, ++total_reads) {
-			// print feedback every 10 minutes
-			if (opt_feedback && elapsed_time() >= 600) {
-				start_time();
-				fprintf(stderr, "%lu: %10lu entries used (%5.2f%%), %lu overflow (%lu reads)\n", time(0), mer_list.size(), double(100) * mer_list.size() / mer_list.capacity(), mer_list.overflow_size(), total_reads);
+	size_t i(0), j(0), k(sizeof(hashl::base_type) * 8 - 2);
+	// iterate over all reads (nmers can't cross read boundaries)
+	std::vector<size_t>::const_iterator a(read_ends.begin());
+	const std::vector<size_t>::const_iterator end_a(read_ends.end());
+	for (; a != end_a; ++a, ++total_reads) {
+		// print feedback every 10 minutes
+		if (opt_feedback && elapsed_time() >= 600) {
+			start_time();
+			fprintf(stderr, "%lu: %10lu entries used (%5.2f%%), %lu overflow (%lu reads)\n", time(0), mer_list.size(), double(100) * mer_list.size() / mer_list.capacity(), mer_list.overflow_size(), total_reads);
+		}
+		const size_t end_i(i + opt_mer_length - 1);
+		// load keys with opt_mer_length - 1 basepairs
+		for (; i < end_i; ++i) {
+			const hashl::base_type c((data[j] >> k) & 3);
+			key.push_back(c);
+			comp_key.push_front(3 - c);
+			if (k) {
+				k -= 2;
+			} else {
+				k = sizeof(hashl::base_type) * 8 - 2;
+				++j;
 			}
-			uint64_t j((2 * i) / (sizeof(hashl::base_type) * 8));
-			uint64_t k(sizeof(hashl::base_type) * 8 - (2 * i) % (sizeof(hashl::base_type) * 8) - 2);
-			const uint64_t end_i(i + opt_mer_length - 1);
-			// load keys with opt_mer_length - 1 basepairs
-			for (; i < end_i; ++i) {
-				const hashl::base_type c((data[j] >> k) & 3);
-				key.push_back(c);
-				comp_key.push_front(3 - c);
-				if (k) {
-					k -= 2;
-				} else {
-					k = sizeof(hashl::base_type) * 8 - 2;
-					++j;
-				}
+		}
+		// run over all nmers, one basepair at a time
+		for (; i < *a; ++i) {
+			const hashl::base_type c((data[j] >> k) & 3);
+			key.push_back(c);
+			comp_key.push_front(3 - c);
+			if (k) {
+				k -= 2;
+			} else {
+				k = sizeof(hashl::base_type) * 8 - 2;
+				++j;
 			}
-			// run over all nmers, one basepair at a time
-			for (; i < *b; ++i) {
-				const hashl::base_type c((data[j] >> k) & 3);
-				key.push_back(c);
-				comp_key.push_front(3 - c);
-				if (k) {
-					k -= 2;
-				} else {
-					k = sizeof(hashl::base_type) * 8 - 2;
-					++j;
-				}
-				if (!mer_list.increment(key, comp_key, 2 * (i + 1 - opt_mer_length))) {
-					fprintf(stderr, "Error: ran out of space in hash\n");
-					exit(1);
-				}
+			if (!mer_list.increment(key, comp_key, 2 * (i + 1 - opt_mer_length))) {
+				fprintf(stderr, "Error: ran out of space in hash\n");
+				exit(1);
 			}
 		}
 	}
 }
 
-// XXX - this is a horrible mess and needs to be at least partially reverted
-static void read_files(int argc, char **argv, hashl &mer_list) {
-	hash_data file_data;
+// metadata format: # of files, [ filename, # of reads, read offsets, read names ]
+// strings are null delimited, # and read lengths are uint64_t
+// hashl boilerplate check will ensure byte order is the same read as written
+
+static void read_in_files(int argc, char **argv, hashl &mer_list) {
 	const uint64_t file_count(argc - optind);
+	hash_metadata metadata;
 	for (size_t i(0); i < file_count; ++i) {
 		if (opt_feedback) {
-			fprintf(stderr, "%lu: Reading %s\n", time(0), argv[i + optind]);
+			fprintf(stderr, "%lu: Getting read sizes for %s\n", time(0), argv[i + optind]);
 		}
-		file_data.read_file(argv[i + optind]);
+		metadata.add_file(argv[i + optind]);
+		get_read_sizes(argv[i + optind], metadata);
 	}
+	size_t data_size;
+	const hashl::base_type * const data(metadata.read_data(data_size));
 	if (opt_feedback) {
 		fprintf(stderr, "%lu: Initializing n-mer hash\n", time(0));
 	}
 	// put data and metadata into mer_list
-	mer_list.init(opt_nmers ? opt_nmers : file_data.max_kmers(), opt_mer_length * 2, file_data.data());
+	mer_list.init(opt_nmers ? opt_nmers : metadata.max_kmers(), opt_mer_length * 2, data, data_size);
 	size_t metadata_size;
-	const void *metadata(file_data.pack(metadata_size));
-	mer_list.set_metadata(metadata, metadata_size);
+	const void * const md(metadata.pack(metadata_size));
+	mer_list.set_metadata(md, metadata_size);
 	if (opt_feedback) {
-		fprintf(stderr, "%lu: Counting n-mers for %lu reads\n", time(0), total_reads);
+		std::pair<size_t, size_t> read_count(metadata.total_reads());
+		fprintf(stderr, "%lu: Counting n-mers for %lu reads (%lu ranges)\n", time(0), read_count.first, read_count.second);
 		start_time();
 	}
-	count_nmers(mer_list, file_data);
+	const std::vector<size_t> read_ends(metadata.read_ends());
+	count_nmers(mer_list, data, read_ends);
 	if (opt_feedback) {
 		print_final_input_feedback(mer_list);
 	}
@@ -737,7 +760,7 @@ static void read_files(int argc, char **argv, hashl &mer_list) {
 			fprintf(stderr, "%lu: Recounting n-mers\n", time(0));
 			start_time();
 		}
-		count_nmers(mer_list, file_data);
+		count_nmers(mer_list, data, read_ends);
 		if (opt_feedback) {
 			print_final_input_feedback(mer_list);
 		}
@@ -757,7 +780,7 @@ int main(int argc, char **argv) {
 		}
 	}
 	if (optind != argc) {
-		read_files(argc, argv, mer_list);
+		read_in_files(argc, argv, mer_list);
 	}
 	if (opt_feedback) {
 		fprintf(stderr, "%lu: Printing results\n", time(0));
