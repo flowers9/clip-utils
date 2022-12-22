@@ -673,16 +673,16 @@ static void get_read_sizes(const char * const file, hash_metadata &metadata) {
 
 static void count_nmers(hashl &mer_list, const hashl::base_type * const data, const std::vector<size_t> &read_ends) {
 	hashl::key_type key(mer_list), comp_key(mer_list);
-	size_t total_reads(0);
+	size_t total_read_ranges(0);
 	size_t i(0), j(0), k(sizeof(hashl::base_type) * 8 - 2);
 	// iterate over all reads (nmers can't cross read boundaries)
 	std::vector<size_t>::const_iterator a(read_ends.begin());
 	const std::vector<size_t>::const_iterator end_a(read_ends.end());
-	for (; a != end_a; ++a, ++total_reads) {
+	for (; a != end_a; ++a, ++total_read_ranges) {
 		// print feedback every 10 minutes
 		if (opt_feedback && elapsed_time() >= 600) {
 			start_time();
-			fprintf(stderr, "%lu: %10lu entries used (%5.2f%%), %lu overflow (%lu reads)\n", time(0), mer_list.size(), double(100) * mer_list.size() / mer_list.capacity(), mer_list.overflow_size(), total_reads);
+			fprintf(stderr, "%lu: %10lu entries used (%5.2f%%), %lu overflow (%lu read ranges)\n", time(0), mer_list.size(), double(100) * mer_list.size() / mer_list.capacity(), mer_list.overflow_size(), total_read_ranges);
 		}
 		const size_t end_i(i + opt_mer_length - 1);
 		// load keys with opt_mer_length - 1 basepairs
@@ -754,14 +754,9 @@ static void read_in_files(int argc, char **argv, hashl &mer_list) {
 	const double load(double(mer_list.size()) / mer_list.capacity());
 	if (load < opt_load_lower_bound || opt_load_upper_bound < load) {
 		if (opt_feedback) {
-			fprintf(stderr, "%lu: hash fill rate out of range, rehashing: %f - %f: %f\n", time(0), opt_load_lower_bound, opt_load_upper_bound, load);
+			fprintf(stderr, "%lu: hash fill rate out of range, resizing: %f - %f: %f\n", time(0), opt_load_lower_bound, opt_load_upper_bound, load);
 		}
 		mer_list.resize(mer_list.size() * 2 / (opt_load_lower_bound + opt_load_upper_bound));
-		if (opt_feedback) {
-			fprintf(stderr, "%lu: Recounting n-mers\n", time(0));
-			start_time();
-		}
-		count_nmers(mer_list, data, read_ends);
 		if (opt_feedback) {
 			print_final_input_feedback(mer_list);
 		}

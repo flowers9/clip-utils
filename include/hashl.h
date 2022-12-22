@@ -26,7 +26,6 @@ class hashl {
 	    private:
 		const size_t word_width;
 		base_type * const k;	// stored in reverse - high word in [0]
-		friend class hashl;	// read access to k needed for key_equal()
 	    public:
 		void copy_in(const base_type *, const offset_type);
 		bool operator==(const key_type &__a) const {
@@ -74,7 +73,7 @@ class hashl {
 		void push_back(const base_type __x) {
 			const size_t __n(sizeof(base_type) * 8 - 2);
 			size_t __i(0);
-			for (; __i != word_width - 1; ++__i) {
+			for (; __i < word_width - 1; ++__i) {
 				k[__i] = (k[__i] << 2) | (k[__i + 1] >> __n);
 			}
 			k[__i] = (k[__i] << 2) | __x;
@@ -82,12 +81,13 @@ class hashl {
 		}
 		void push_front(const base_type __x) {
 			const size_t __n(sizeof(base_type) * 8 - 2);
-			for (size_t __i(word_width - 1); __i != 0; --__i) {
+			for (size_t __i(word_width - 1); __i > 0; --__i) {
 				k[__i] = (k[__i - 1] << __n) | (k[__i] >> 2);
 			}
 			k[0] = (__x << bit_shift) | (k[0] >> 2);
 		}
 		void make_complement(const key_type &);
+		bool equal(const base_type *, const offset_type) const;
 	};
 
 	class const_iterator {	// only useful for pulling out data
@@ -148,7 +148,6 @@ class hashl {
 	offset_type insert_offset(const key_type &key, const key_type &comp_key, offset_type);
     private:
 	offset_type insert_key(offset_type, offset_type);
-	bool key_equal(offset_type, const key_type &) const;
     public:
 	explicit hashl(void) : used_elements(0), modulus(0), collision_modulus(0), data_size(0), metadata_size(0), bit_width(0), word_width(0), key_list(0), value_list(0), data(0), metadata(0) { }
 	// size of hash, bit size of key_type, sequence data
@@ -189,7 +188,6 @@ class hashl {
 	void save(int) const;
 	void set_metadata(const void *metadata_in, size_t metadata_size_in);
 	void get_metadata(const void * &metadata_out, size_t &metadata_size_out) const;
-	// throw out current hash, but not data or metadata
 	void resize(offset_type);
 };
 
