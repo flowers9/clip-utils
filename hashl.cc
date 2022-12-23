@@ -30,7 +30,7 @@ std::string hashl::boilerplate() const {
 	return s;
 }
 
-void hashl::init(const offset_type size_asked, const size_t bits_in, const base_type *data_in, const offset_type data_size_in) {
+void hashl::init(const hash_offset_type size_asked, const size_t bits_in, const base_type *data_in, const data_offset_type data_size_in) {
 	bit_width = bits_in;
 	data = data_in;
 	data_size = data_size_in;
@@ -62,19 +62,19 @@ void hashl::init_from_file(const int fd) {
 	data = data_tmp;
 	value_list = new small_value_type[modulus];
 	pfread(fd, value_list, sizeof(small_value_type) * modulus);
-	key_list = new offset_type[modulus];
-	for (offset_type i(0); i < modulus; ++i) {
+	key_list = new data_offset_type[modulus];
+	for (hash_offset_type i(0); i < modulus; ++i) {
 		if (value_list[i] == 0) {
 			key_list[i] = invalid_key;
 		} else {
-			pfread(fd, &key_list[i], sizeof(offset_type));
+			pfread(fd, &key_list[i], sizeof(data_offset_type));
 		}
 	}
 	// read in overflow map
 	size_t x;
 	pfread(fd, &x, sizeof(x));
 	for (; x; --x) {
-		offset_type i;
+		hash_offset_type i;
 		value_type j;
 		pfread(fd, &i, sizeof(i));
 		pfread(fd, &j, sizeof(j));
@@ -84,7 +84,7 @@ void hashl::init_from_file(const int fd) {
 
 // insert a key at a particular location
 
-hashl::offset_type hashl::insert_key(const offset_type i, const offset_type offset) {
+hashl::hash_offset_type hashl::insert_key(const hash_offset_type i, const data_offset_type offset) {
 	if (used_elements == modulus) {
 		return modulus;		// hash table is full
 	}
@@ -96,7 +96,7 @@ hashl::offset_type hashl::insert_key(const offset_type i, const offset_type offs
 
 // create key from bit offset into data
 
-void hashl::key_type::copy_in(const base_type *data, const offset_type i) {
+void hashl::key_type::copy_in(const base_type *data, const data_offset_type i) {
 	// move to start of sequence in data
 	data += i / (sizeof(base_type) * 8);
 	// how many bits we have in the first word
@@ -128,7 +128,7 @@ void hashl::key_type::copy_in(const base_type *data, const offset_type i) {
 // generate internal key from bit offset into data, compare to key;
 // equivalent to above subroutine, just with more breakpoints
 
-bool hashl::key_type::equal(const base_type *data, const offset_type i) const {
+bool hashl::key_type::equal(const base_type *data, const data_offset_type i) const {
 	// move to start of sequence in data
 	data += i / (sizeof(base_type) * 8);
 	// how many bits we have in the first word
@@ -172,15 +172,15 @@ bool hashl::key_type::equal(const base_type *data, const offset_type i) const {
 
 // find a key, or insert it if it doesn't exist; return modulus if hash is full
 
-hashl::offset_type hashl::insert_offset(const key_type &key, const key_type &comp_key, const offset_type offset) {
+hashl::hash_offset_type hashl::insert_offset(const key_type &key, const key_type &comp_key, const data_offset_type offset) {
 	const base_type key_hash(key < comp_key ? key.hash() : comp_key.hash());
-	offset_type i(key_hash % modulus);
+	hash_offset_type i(key_hash % modulus);
 	if (key_list[i] == invalid_key) {		// insert
 		return insert_key(i, offset);
 	} else if (key.equal(data, key_list[i]) || comp_key.equal(data, key_list[i])) {
 		return i;				// already present
 	}
-	const offset_type j(collision_modulus - key_hash % collision_modulus);
+	const hash_offset_type j(collision_modulus - key_hash % collision_modulus);
 	for (;;) {	// search over all elements
 		i = (i + j) % modulus;
 		if (key_list[i] == invalid_key) {
@@ -203,17 +203,17 @@ void hashl::key_type::make_complement(const hashl::key_type &key) {
 
 // find a key; return modulus as offset if not found
 
-hashl::offset_type hashl::find_offset(const key_type &key) const {
+hashl::hash_offset_type hashl::find_offset(const key_type &key) const {
 	key_type comp_key(*this);
 	comp_key.make_complement(key);
 	const base_type key_hash(key < comp_key ? key.hash() : comp_key.hash());
-	offset_type i(key_hash % modulus);
+	hash_offset_type i(key_hash % modulus);
 	if (key_list[i] == invalid_key) {
 		return modulus;
 	} else if (key.equal(data, key_list[i]) || comp_key.equal(data, key_list[i])) {
 		return i;
 	}
-	const offset_type j(collision_modulus - key_hash % collision_modulus);
+	const hash_offset_type j(collision_modulus - key_hash % collision_modulus);
 	for (;;) {	// search over all elements
 		i = (i + j) % modulus;
 		if (key_list[i] == invalid_key) {
@@ -227,7 +227,7 @@ hashl::offset_type hashl::find_offset(const key_type &key) const {
 // increment the count for a key (but don't create a new entry if it doesn't exist)
 
 bool hashl::increment(const key_type &key) {
-	const offset_type i(find_offset(key));
+	const hash_offset_type i(find_offset(key));
 	if (i == modulus) {	// insert failed
 		return 0;
 	}
@@ -239,8 +239,8 @@ bool hashl::increment(const key_type &key) {
 	return 1;
 }
 
-bool hashl::increment(const key_type &key, const key_type &comp_key, const offset_type offset) {
-	const offset_type i(insert_offset(key, comp_key, offset));
+bool hashl::increment(const key_type &key, const key_type &comp_key, const data_offset_type offset) {
+	const hash_offset_type i(insert_offset(key, comp_key, offset));
 	if (i == modulus) {	// insert failed
 		return 0;
 	}
@@ -255,14 +255,14 @@ bool hashl::increment(const key_type &key, const key_type &comp_key, const offse
 // return the value associated with a key
 
 hashl::value_type hashl::value(const key_type &key) const {
-	const offset_type i(find_offset(key));
+	const hash_offset_type i(find_offset(key));
 	if (i == modulus) {	// key not found
 		return 0;
 	} else if (value_list[i] < max_small_value) {
 		return value_list[i];
 	} else {
 		// use find() to avoid inserting a value into value_map
-		const std::map<offset_type, value_type>::const_iterator a(value_map.find(i));
+		const std::map<hash_offset_type, value_type>::const_iterator a(value_map.find(i));
 		if (a == value_map.end()) {
 			return max_small_value;
 		} else {
@@ -289,14 +289,11 @@ hashl::const_iterator hashl::end() const {
 
 void hashl::const_iterator::get_value() {
 	if (offset < list->modulus) {
-		if (list->value_list[offset] < max_small_value) {
-			value = list->value_list[offset];
-		} else {
-			const std::map<offset_type, value_type>::const_iterator b(list->value_map.find(offset));
-			if (b == list->value_map.end()) {
-				value = max_small_value;
-			} else {
-				value = b->second + max_small_value;
+		value = list->value_list[offset];
+		if (value == max_small_value) {
+			const std::map<hash_offset_type, value_type>::const_iterator b(list->value_map.find(offset));
+			if (b != list->value_map.end()) {
+				value += b->second;
 			}
 		}
 	} else {
@@ -316,17 +313,17 @@ void hashl::save(const int fd) const {
 	pfwrite(fd, &data_size, sizeof(data_size));
 	pfwrite(fd, data, sizeof(base_type) * data_size);
 	pfwrite(fd, value_list, sizeof(small_value_type) * modulus);
-	for (offset_type i(0); i < modulus; ++i) {
+	for (hash_offset_type i(0); i < modulus; ++i) {
 		if (key_list[i] != invalid_key) {
-			pfwrite(fd, &key_list[i], sizeof(offset_type));
+			pfwrite(fd, &key_list[i], sizeof(data_offset_type));
 		}
 	}
 	const size_t x(value_map.size());
 	pfwrite(fd, &x, sizeof(x));
-	std::map<offset_type, value_type>::const_iterator a(value_map.begin());
-	const std::map<offset_type, value_type>::const_iterator end_a(value_map.end());
+	std::map<hash_offset_type, value_type>::const_iterator a(value_map.begin());
+	const std::map<hash_offset_type, value_type>::const_iterator end_a(value_map.end());
 	for (; a != end_a; ++a) {
-		pfwrite(fd, &a->first, sizeof(offset_type));
+		pfwrite(fd, &a->first, sizeof(hash_offset_type));
 		pfwrite(fd, &a->second, sizeof(value_type));
 	}
 }
@@ -341,11 +338,12 @@ void hashl::get_metadata(const void * &metadata_out, size_t &metadata_size_out) 
 	metadata_size_out = metadata_size;
 }
 
-void hashl::resize(offset_type size_asked) {
+void hashl::resize(hash_offset_type size_asked) {
 	const size_t old_modulus(modulus);
-	const offset_type * const old_key_list(key_list);
+	const data_offset_type * const old_key_list(key_list);
 	const small_value_type * const old_value_list(value_list);
-	std::map<offset_type, value_type> old_value_map;
+	// key for map is offset into hash, which will change, so this needs updating, too
+	std::map<hash_offset_type, value_type> old_value_map;
 	old_value_map.swap(value_map);
 	if (size_asked < 3) {	// to avoid collision_modulus == modulus
 		size_asked = 3;
@@ -354,32 +352,38 @@ void hashl::resize(offset_type size_asked) {
 	// collision_modulus just needs to be relatively prime with modulus;
 	// since modulus is prime, any value will do - I made it prime for fun
 	collision_modulus = next_prime(size_asked / 2);
-	key_list = new offset_type[modulus];
+	key_list = new data_offset_type[modulus];
 	value_list = new small_value_type[modulus];
 	// initialize keys and values
-	for (offset_type i(0); i < modulus; ++i) {
+	for (hash_offset_type i(0); i < modulus; ++i) {
 		key_list[i] = invalid_key;
 	}
-	for (offset_type i(0); i < modulus; ++i) {
+	for (hash_offset_type i(0); i < modulus; ++i) {
 		value_list[i] = 0;
 	}
 	// copy over old hash keys and values
 	key_type key(*this), comp_key(*this);
-	for (offset_type i(0); i < old_modulus; ++i) {
+	for (hash_offset_type i(0); i < old_modulus; ++i) {
 		if (old_key_list[i] != invalid_key) {
 			key.copy_in(data, old_key_list[i]);
 			comp_key.make_complement(key);
 			const base_type key_hash(key < comp_key ? key.hash() : comp_key.hash());
-			offset_type new_i(key_hash % modulus);
+			hash_offset_type new_i(key_hash % modulus);
 			if (key_list[new_i] != invalid_key) {
-				const offset_type j(collision_modulus - key_hash % collision_modulus);
+				const hash_offset_type j(collision_modulus - key_hash % collision_modulus);
 				do {
 					new_i = (new_i + j) % modulus;
 				} while (key_list[new_i] != invalid_key);
 			}
 			key_list[new_i] = old_key_list[i];
 			value_list[new_i] = old_value_list[i];
-			value_map[new_i] = old_value_map[i];
+			if (old_value_list[i] == max_small_value) {
+				// use find() to avoid inserting a value into old_value_map
+				const std::map<hash_offset_type, value_type>::const_iterator a(old_value_map.find(i));
+				if (a != old_value_map.end()) {
+					value_map[new_i] = a->second;
+				}
+			}
 		}
 	}
 	delete[] old_key_list;
