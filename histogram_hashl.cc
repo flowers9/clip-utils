@@ -29,7 +29,7 @@ static unsigned long opt_frequency_cutoff;
 
 class hash_metadata {
     private:				// convenience variables for read_data()
-	hashl::base_type *data;
+	std::vector<hashl::base_type> data;
 	size_t byte_offset, bit_offset;
     private:
 	std::vector<std::string> files;
@@ -43,17 +43,28 @@ class hash_metadata {
 	void add_read(const std::string &);		// add new read at current file
 	void add_read_range(uint64_t, uint64_t);	// add new read range at current read
 	void finalize(void);				// remove last adds if empty
-	const void *pack(size_t &) const;
-	void unpack(const char *);
+	void pack(std::vector<char> &) const;
+	void unpack(const std::vector<char> &);
 	void print(void) const;
-	const hashl::base_type *read_data(size_t &);
+	void read_data(std::vector<hashl::base_type> &);
 	std::pair<size_t, size_t> total_reads(void) const;	// reads & read ranges
 	size_t max_kmers(void) const;
 	std::vector<size_t> read_ends(void) const;
+	void add(hash_metadata &);
     private:
 	void read_file(size_t);
 	void get_subreads(const std::string &, const std::vector<std::pair<uint64_t, uint64_t> > &);
 };
+
+// add metadata from another hash to ours
+void hash_metadata::add(hash_metadata &a) {
+	files.reserve(files.size() + a.files.size());
+	std::move(a.files.begin(), a.files.end(), std::back_inserter(files));
+	reads.reserve(reads.size() + a.reads.size());
+	std::move(a.reads.begin(), a.reads.end(), std::back_inserter(reads));
+	read_ranges.reserve(read_ranges.size() + a.read_ranges.size());
+	std::move(a.read_ranges.begin(), a.read_ranges.end(), std::back_inserter(read_ranges));
+}
 
 // return 0-3, exit for bad sequence
 static hashl::base_type convert_char(const char c) {
@@ -145,8 +156,9 @@ void hash_metadata::read_file(const size_t i) {
 	close_compressed(fd);
 }
 
-// only modifies convenience variables, not actual data
-const hashl::base_type *hash_metadata::read_data(size_t &data_size) {
+// mostly const - only the convenience variables get modified
+
+void hash_metadata::read_data(std::vector<hashl::base_type> &data_out) {
 	// length of all stored sequence
 	size_t sequence_size(0);
 	for (size_t i(0); i < files.size(); ++i) {
@@ -157,9 +169,8 @@ const hashl::base_type *hash_metadata::read_data(size_t &data_size) {
 		}
 	}
 	// convert size from basepairs to length of hashl::base_type array
-	data_size = (2 * sequence_size + sizeof(hashl::base_type) * 8 - 1) / (sizeof(hashl::base_type) * 8);
-	data = new hashl::base_type[data_size];
-	data[0] = 0;
+	const size_t data_size((2 * sequence_size + sizeof(hashl::base_type) * 8 - 1) / (sizeof(hashl::base_type) * 8));
+	data.assign(data_size, 0);
 	byte_offset = 0;
 	bit_offset = sizeof(hashl::base_type) * 8;
 	for (size_t i(0); i < files.size(); ++i) {
@@ -168,7 +179,8 @@ const hashl::base_type *hash_metadata::read_data(size_t &data_size) {
 		}
 		read_file(i);
 	}
-	return data;
+	data_out.swap(data);
+	data.clear();		// just in case data_out wasn't empty
 }
 
 std::pair<size_t, size_t> hash_metadata::total_reads() const {
@@ -240,9 +252,9 @@ void hash_metadata::finalize() {
 	}
 }
 
-const void *hash_metadata::pack(size_t &metadata_size) const {
+void hash_metadata::pack(std::vector<char> &d) const {
 	// count space needed
-	metadata_size = sizeof(uint64_t);				// number of files
+	size_t metadata_size(sizeof(uint64_t));				// number of files
 	for (size_t i(0); i < files.size(); ++i) {
 		metadata_size += files[i].size() + 1;			// file name and null
 		metadata_size += sizeof(uint64_t);			// number of reads
@@ -253,65 +265,69 @@ const void *hash_metadata::pack(size_t &metadata_size) const {
 		}
 	}
 	// allocate space
-	char * const d_out(new char[metadata_size]);
-	char *d(d_out);
-	uint64_t tmp;
+	d.assign(metadata_size, 0);
 	// fill space with metadata
-	memcpy(d, &(tmp = files.size()), sizeof(tmp));
-	d += sizeof(tmp);
+	size_t offset(0);
+	uint64_t tmp;
+	memcpy(&d[offset], &(tmp = files.size()), sizeof(tmp));
+	offset += sizeof(tmp);
 	for (size_t i(0); i < files.size(); ++i) {
-		memcpy(d, files[i].c_str(), files[i].size() + 1);
-		d += files[i].size() + 1;
-		memcpy(d, &(tmp = reads.size()), sizeof(tmp));
-		d += sizeof(tmp);
+		memcpy(&d[offset], files[i].c_str(), files[i].size() + 1);
+		offset += files[i].size() + 1;
+		memcpy(&d[offset], &(tmp = reads[i].size()), sizeof(tmp));
+		offset += sizeof(tmp);
 		for (size_t j(0); j < reads[i].size(); ++j) {
-			memcpy(d, reads[i][j].c_str(), reads[i][j].size() + 1);
-			d += reads[i][j].size() + 1;
-			memcpy(d, &(tmp = read_ranges[i][j].size()), sizeof(tmp));
-			d += sizeof(tmp);
+			memcpy(&d[offset], reads[i][j].c_str(), reads[i][j].size() + 1);
+			offset += reads[i][j].size() + 1;
+			memcpy(&d[offset], &(tmp = read_ranges[i][j].size()), sizeof(tmp));
+			offset += sizeof(tmp);
 			for (size_t k(0); k < read_ranges[i][j].size(); ++k) {
-				memcpy(d, &read_ranges[i][j][k].first, sizeof(uint64_t));
-				d += sizeof(uint64_t);
-				memcpy(d, &read_ranges[i][j][k].second, sizeof(uint64_t));
-				d += sizeof(uint64_t);
+				memcpy(&d[offset], &read_ranges[i][j][k].first, sizeof(uint64_t));
+				offset += sizeof(uint64_t);
+				memcpy(&d[offset], &read_ranges[i][j][k].second, sizeof(uint64_t));
+				offset += sizeof(uint64_t);
 			}
 		}
 	}
-	return d_out;
 }
 
-void hash_metadata::unpack(const char *d) {
+void hash_metadata::unpack(const std::vector<char> &d) {
+	size_t offset(0);
 	uint64_t file_count;
-	memcpy(&file_count, d, sizeof(file_count));
-	d += sizeof(file_count);
+	memcpy(&file_count, &d[offset], sizeof(file_count));
+	offset += sizeof(file_count);
 	files.clear();
 	files.reserve(file_count);
 	reads.assign(file_count, std::vector<std::string>());
 	read_ranges.assign(file_count, std::vector<std::vector<std::pair<uint64_t, uint64_t> > >());
 	for (size_t i(0); i < file_count; ++i) {
-		files.push_back(d);
-		d += files.back().size() + 1;
+		files.push_back(&d[offset]);
+		offset += files.back().size() + 1;
 		uint64_t read_count;
-		memcpy(&read_count, d, sizeof(read_count));
-		d += sizeof(read_count);
+		memcpy(&read_count, &d[offset], sizeof(read_count));
+		offset += sizeof(read_count);
 		reads[i].reserve(read_count);
 		read_ranges[i].assign(read_count, std::vector<std::pair<uint64_t, uint64_t> >());
 		for (size_t j(0); j < read_count; ++j) {
-			reads[i].push_back(d);
-			d += reads[i].back().size() + 1;
+			reads[i].push_back(&d[offset]);
+			offset += reads[i].back().size() + 1;
 			uint64_t read_range_count;
-			memcpy(&read_range_count, d, sizeof(read_range_count));
-			d += sizeof(read_range_count);
+			memcpy(&read_range_count, &d[offset], sizeof(read_range_count));
+			offset += sizeof(read_range_count);
 			read_ranges[i][j].reserve(read_range_count);
 			for (size_t k(0); k < read_range_count; ++k) {
 				uint64_t start, end;
-				memcpy(&start, d, sizeof(start));
-				d += sizeof(start);
-				memcpy(&end, d, sizeof(end));
-				d += sizeof(end);
+				memcpy(&start, &d[offset], sizeof(start));
+				offset += sizeof(start);
+				memcpy(&end, &d[offset], sizeof(end));
+				offset += sizeof(end);
 				read_ranges[i][j].push_back(std::make_pair(start, end));
 			}
 		}
+	}
+	if (d.size() != offset) {
+		fprintf(stderr, "Error: metadata size mismatch: %lu != %lu\n", d.size(), offset);
+		exit(1);
 	}
 }
 
@@ -374,7 +390,7 @@ static void reverse_key(const hashl::key_type &key_in, hashl::key_type &key_out)
 
 void print_final_input_feedback(const hashl &mer_list) {
 	if (opt_feedback && mer_list.size() != 0) {
-		fprintf(stderr, "%lu: %10lu entries used (%5.2f%%), %lu overflow\n", time(0), mer_list.size(), double(100) * mer_list.size() / mer_list.capacity(), mer_list.overflow_size());
+		fprintf(stderr, "%lu: %10lu entries used (%5.2f%%)\n", time(0), mer_list.size(), double(100) * mer_list.size() / mer_list.capacity());
 	}
 }
 
@@ -671,7 +687,8 @@ static void get_read_sizes(const char * const file, hash_metadata &metadata) {
 	close_compressed(fd);
 }
 
-static void count_nmers(hashl &mer_list, const hashl::base_type * const data, const std::vector<size_t> &read_ends) {
+static void count_nmers(hashl &mer_list, const std::vector<size_t> &read_ends) {
+	const std::vector<hashl::base_type> &data(mer_list.get_data());
 	hashl::key_type key(mer_list), comp_key(mer_list);
 	size_t total_read_ranges(0);
 	size_t i(0), j(0), k(sizeof(hashl::base_type) * 8 - 2);
@@ -682,7 +699,7 @@ static void count_nmers(hashl &mer_list, const hashl::base_type * const data, co
 		// print feedback every 10 minutes
 		if (opt_feedback && elapsed_time() >= 600) {
 			start_time();
-			fprintf(stderr, "%lu: %10lu entries used (%5.2f%%), %lu overflow (%lu read ranges)\n", time(0), mer_list.size(), double(100) * mer_list.size() / mer_list.capacity(), mer_list.overflow_size(), total_read_ranges);
+			fprintf(stderr, "%lu: %10lu entries used (%5.2f%%) (%lu read ranges)\n", time(0), mer_list.size(), double(100) * mer_list.size() / mer_list.capacity(), total_read_ranges);
 		}
 		const size_t end_i(i + opt_mer_length - 1);
 		// load keys with opt_mer_length - 1 basepairs
@@ -708,6 +725,7 @@ static void count_nmers(hashl &mer_list, const hashl::base_type * const data, co
 				k = sizeof(hashl::base_type) * 8 - 2;
 				++j;
 			}
+			// increment with bit offset to start of nmer
 			if (!mer_list.increment(key, comp_key, 2 * (i + 1 - opt_mer_length))) {
 				fprintf(stderr, "Error: ran out of space in hash\n");
 				exit(1);
@@ -730,23 +748,23 @@ static void read_in_files(int argc, char **argv, hashl &mer_list) {
 		metadata.add_file(argv[i + optind]);
 		get_read_sizes(argv[i + optind], metadata);
 	}
-	size_t data_size;
-	const hashl::base_type * const data(metadata.read_data(data_size));
+	std::vector<hashl::base_type> data;
+	metadata.read_data(data);
 	if (opt_feedback) {
 		fprintf(stderr, "%lu: Initializing n-mer hash\n", time(0));
 	}
 	// put data and metadata into mer_list
-	mer_list.init(opt_nmers ? opt_nmers : metadata.max_kmers(), opt_mer_length * 2, data, data_size);
-	size_t metadata_size;
-	const void * const md(metadata.pack(metadata_size));
-	mer_list.set_metadata(md, metadata_size);
+	mer_list.init(opt_nmers ? opt_nmers : metadata.max_kmers(), opt_mer_length * 2, data);
+	std::vector<char> packed_metadata;
+	metadata.pack(packed_metadata);
+	mer_list.set_metadata(packed_metadata);
 	if (opt_feedback) {
 		std::pair<size_t, size_t> read_count(metadata.total_reads());
 		fprintf(stderr, "%lu: Counting n-mers for %lu reads (%lu ranges)\n", time(0), read_count.first, read_count.second);
 		start_time();
 	}
 	const std::vector<size_t> read_ends(metadata.read_ends());
-	count_nmers(mer_list, data, read_ends);
+	count_nmers(mer_list, read_ends);
 	if (opt_feedback) {
 		print_final_input_feedback(mer_list);
 	}

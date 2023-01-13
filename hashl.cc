@@ -5,16 +5,11 @@
 #include "open_compressed.h"	// pfread()
 #include "write_fork.h"	// pfwrite()
 #include <map>		// map<>
-#include <new>		// new
 #include <stdio.h>	// fprintf(), stderr
 #include <stdlib.h>	// exit()
 #include <string.h>	// memcmp(), memcpy()
 #include <string>	// string
-
-hashl::~hashl() {
-	delete[] key_list;
-	delete[] value_list;
-}
+#include <vector>	// vector<>
 
 // description beginning of saved file
 
@@ -30,11 +25,10 @@ std::string hashl::boilerplate() const {
 	return s;
 }
 
-void hashl::init(const hash_offset_type size_asked, const size_t bits_in, const base_type *data_in, const data_offset_type data_size_in) {
+void hashl::init(const hash_offset_type size_asked, const size_t bits_in, std::vector<base_type> &data_in) {
 	bit_width = bits_in;
-	data = data_in;
-	data_size = data_size_in;
 	word_width = (bit_width + 8 * sizeof(base_type) - 1) / (8 * sizeof(base_type));
+	data.swap(data_in);
 	resize(size_asked);
 }
 
@@ -51,34 +45,21 @@ void hashl::init_from_file(const int fd) {
 	pfread(fd, &used_elements, sizeof(used_elements));
 	pfread(fd, &bit_width, sizeof(bit_width));
 	word_width = (bit_width + 8 * sizeof(base_type) - 1) / (8 * sizeof(base_type));
+	uint64_t metadata_size;
 	pfread(fd, &metadata_size, sizeof(metadata_size));
-	// read in in two steps, as metadata is const (as is data, below)
-	void * const metadata_tmp(new char[metadata_size]);
-	pfread(fd, metadata_tmp, metadata_size);
-	metadata = metadata_tmp;
+	metadata.assign(metadata_size, 0);
+	pfread(fd, &metadata[0], metadata_size);
+	uint64_t data_size;
 	pfread(fd, &data_size, sizeof(data_size));
-	base_type * const data_tmp(new base_type[data_size]);
-	pfread(fd, data_tmp, sizeof(base_type) * data_size);
-	data = data_tmp;
-	value_list = new small_value_type[modulus];
-	pfread(fd, value_list, sizeof(small_value_type) * modulus);
-	key_list = new data_offset_type[modulus];
+	data.assign(data_size, 0);
+	pfread(fd, &data[0], sizeof(base_type) * data_size);
+	value_list.assign(modulus, 0);
+	pfread(fd, &value_list[0], sizeof(small_value_type) * modulus);
+	key_list.assign(modulus, invalid_key);
 	for (hash_offset_type i(0); i < modulus; ++i) {
-		if (value_list[i] == 0) {
-			key_list[i] = invalid_key;
-		} else {
+		if (value_list[i]) {
 			pfread(fd, &key_list[i], sizeof(data_offset_type));
 		}
-	}
-	// read in overflow map
-	size_t x;
-	pfread(fd, &x, sizeof(x));
-	for (; x; --x) {
-		hash_offset_type i;
-		value_type j;
-		pfread(fd, &i, sizeof(i));
-		pfread(fd, &j, sizeof(j));
-		value_map[i] = j;
 	}
 }
 
@@ -90,37 +71,37 @@ hashl::hash_offset_type hashl::insert_key(const hash_offset_type i, const data_o
 	}
 	++used_elements;
 	key_list[i] = offset;
-	value_list[i] = 0;	// init counts
+	value_list[i] = 0;
 	return i;
 }
 
 // create key from bit offset into data
 
-void hashl::key_type::copy_in(const base_type *data, const data_offset_type i) {
-	// move to start of sequence in data
-	data += i / (sizeof(base_type) * 8);
+void hashl::key_type::copy_in(const std::vector<base_type> &data, const data_offset_type offset) {
+	// start of sequence in data
+	const size_t i(offset / (sizeof(base_type) * 8));
 	// how many bits we have in the first word
-	const base_type starting_bits(sizeof(base_type) * 8 - i % (sizeof(base_type) * 8));
+	const base_type starting_bits(sizeof(base_type) * 8 - offset % (sizeof(base_type) * 8));
 	// how many bits the first word is supposed to have for a key
 	const base_type high_bits(bit_shift + 2);
 	if (starting_bits == high_bits) {
-		k[0] = data[0] & high_mask;
+		k[0] = data[i] & high_mask;
 		for (size_t j(1); j < word_width; ++j) {
-			k[j] = data[j];
+			k[j] = data[i + j];
 		}
 	} else if (starting_bits < high_bits) {		// shift left to fill up first word
 		const int shift_left(high_bits - starting_bits);
 		const int shift_right(sizeof(base_type) * 8 - shift_left);
-		k[0] = ((data[0] << shift_left) | (data[1] >> shift_right)) & high_mask;
+		k[0] = ((data[i] << shift_left) | (data[i + 1] >> shift_right)) & high_mask;
 		for (size_t j(1); j < word_width; ++j) {
-			k[j] = (data[j] << shift_left) | (data[j + 1] >> shift_right);
+			k[j] = (data[i + j] << shift_left) | (data[i + j + 1] >> shift_right);
 		}
 	} else {					// shift right to empty out first word
 		const int shift_right(starting_bits - high_bits);
 		const int shift_left(sizeof(base_type) * 8 - shift_right);
-		k[0] = (data[0] >> shift_right) & high_mask;
+		k[0] = (data[i] >> shift_right) & high_mask;
 		for (size_t j(1); j < word_width; ++j) {
-			k[j] = (data[j - 1] << shift_left) | (data[j] >> shift_right);
+			k[j] = (data[i + j - 1] << shift_left) | (data[i + j] >> shift_right);
 		}
 	}
 }
@@ -128,41 +109,41 @@ void hashl::key_type::copy_in(const base_type *data, const data_offset_type i) {
 // generate internal key from bit offset into data, compare to key;
 // equivalent to above subroutine, just with more breakpoints
 
-bool hashl::key_type::equal(const base_type *data, const data_offset_type i) const {
-	// move to start of sequence in data
-	data += i / (sizeof(base_type) * 8);
+bool hashl::key_type::equal(const std::vector<base_type> &data, const data_offset_type offset) const {
+	// start of sequence in data
+	const size_t i(offset / (sizeof(base_type) * 8));
 	// how many bits we have in the first word
-	const base_type starting_bits(sizeof(base_type) * 8 - i % (sizeof(base_type) * 8));
+	const base_type starting_bits(sizeof(base_type) * 8 - offset % (sizeof(base_type) * 8));
 	// how many bits the first word is supposed to have for a key
 	const base_type high_offset(bit_shift + 2);
 	if (starting_bits == high_offset) {
-		if (k[0] != (data[0] & high_mask)) {
+		if (k[0] != (data[i] & high_mask)) {
 			return 0;
 		}
 		for (size_t j(1); j < word_width; ++j) {
-			if (k[j] != data[j]) {
+			if (k[j] != data[i + j]) {
 				return 0;
 			}
 		}
 	} else if (starting_bits < high_offset) {	// shift left to fill up first word
 		const int shift_left(high_offset - starting_bits);
 		const int shift_right(sizeof(base_type) * 8 - shift_left);
-		if (k[0] != (((data[0] << shift_left) | (data[1] >> shift_right)) & high_mask)) {
+		if (k[0] != (((data[i] << shift_left) | (data[i + 1] >> shift_right)) & high_mask)) {
 			return 0;
 		}
 		for (size_t j(1); j < word_width; ++j) {
-			if (k[j] != ((data[j] << shift_left) | (data[j + 1] >> shift_right))) {
+			if (k[j] != ((data[i + j] << shift_left) | (data[i + j + 1] >> shift_right))) {
 				return 0;
 			}
 		}
 	} else {					// shift right to empty out first word
 		const int shift_right(starting_bits - high_offset);
 		const int shift_left(sizeof(base_type) * 8 - shift_right);
-		if (k[0] != ((data[0] >> shift_right) & high_mask)) {
+		if (k[0] != ((data[i] >> shift_right) & high_mask)) {
 			return 0;
 		}
 		for (size_t j(1); j < word_width; ++j) {
-			if (k[j] != ((data[j - 1] << shift_left) | (data[j] >> shift_right))) {
+			if (k[j] != ((data[i + j - 1] << shift_left) | (data[i + j] >> shift_right))) {
 				return 0;
 			}
 		}
@@ -233,8 +214,6 @@ bool hashl::increment(const key_type &key) {
 	}
 	if (value_list[i] < max_small_value) {
 		++value_list[i];
-	} else {
-		++value_map[i];
 	}
 	return 1;
 }
@@ -246,36 +225,22 @@ bool hashl::increment(const key_type &key, const key_type &comp_key, const data_
 	}
 	if (value_list[i] < max_small_value) {
 		++value_list[i];
-	} else {
-		++value_map[i];
 	}
 	return 1;
 }
 
-// return the value associated with a key
+// return the value associated with a key (or zero if key not found)
 
 hashl::value_type hashl::value(const key_type &key) const {
 	const hash_offset_type i(find_offset(key));
-	if (i == modulus) {	// key not found
-		return 0;
-	} else if (value_list[i] < max_small_value) {
-		return value_list[i];
-	} else {
-		// use find() to avoid inserting a value into value_map
-		const std::map<hash_offset_type, value_type>::const_iterator a(value_map.find(i));
-		if (a == value_map.end()) {
-			return max_small_value;
-		} else {
-			return a->second + max_small_value;
-		}
-	}
+	return i < modulus ? value_list[i] : 0;
 }
 
 hashl::const_iterator hashl::begin() const {
 	if (used_elements == 0) {
 		return end();
 	}
-	const_iterator a(this, 0);
+	const_iterator a(*this, 0);
 	// advance to first valid value
 	if (key_list[0] == invalid_key) {
 		++a;
@@ -284,21 +249,11 @@ hashl::const_iterator hashl::begin() const {
 }
 
 hashl::const_iterator hashl::end() const {
-	return const_iterator(this, modulus);
+	return const_iterator(*this, modulus);
 }
 
 void hashl::const_iterator::get_value() {
-	if (offset < list->modulus) {
-		value = list->value_list[offset];
-		if (value == max_small_value) {
-			const std::map<hash_offset_type, value_type>::const_iterator b(list->value_map.find(offset));
-			if (b != list->value_map.end()) {
-				value += b->second;
-			}
-		}
-	} else {
-		value = 0;
-	}
+	value = offset < list.modulus ? list.value_list[offset] : 0;
 }
 
 void hashl::save(const int fd) const {
@@ -308,43 +263,21 @@ void hashl::save(const int fd) const {
 	pfwrite(fd, &collision_modulus, sizeof(collision_modulus));
 	pfwrite(fd, &used_elements, sizeof(used_elements));
 	pfwrite(fd, &bit_width, sizeof(bit_width));
-	pfwrite(fd, &metadata_size, sizeof(metadata_size));
-	pfwrite(fd, metadata, metadata_size);
-	pfwrite(fd, &data_size, sizeof(data_size));
-	pfwrite(fd, data, sizeof(base_type) * data_size);
-	pfwrite(fd, value_list, sizeof(small_value_type) * modulus);
+	uint64_t tmp;
+	pfwrite(fd, &(tmp = metadata.size()), sizeof(tmp));
+	pfwrite(fd, &metadata[0], metadata.size());
+	pfwrite(fd, &(tmp = data.size()), sizeof(tmp));
+	pfwrite(fd, &data[0], sizeof(base_type) * data.size());
+	pfwrite(fd, &value_list[0], sizeof(small_value_type) * modulus);
 	for (hash_offset_type i(0); i < modulus; ++i) {
 		if (key_list[i] != invalid_key) {
 			pfwrite(fd, &key_list[i], sizeof(data_offset_type));
 		}
 	}
-	const size_t x(value_map.size());
-	pfwrite(fd, &x, sizeof(x));
-	std::map<hash_offset_type, value_type>::const_iterator a(value_map.begin());
-	const std::map<hash_offset_type, value_type>::const_iterator end_a(value_map.end());
-	for (; a != end_a; ++a) {
-		pfwrite(fd, &a->first, sizeof(hash_offset_type));
-		pfwrite(fd, &a->second, sizeof(value_type));
-	}
-}
-
-void hashl::set_metadata(const void * const metadata_in, const size_t metadata_size_in) {
-	metadata = metadata_in;
-	metadata_size = metadata_size_in;
-}
-
-void hashl::get_metadata(const void * &metadata_out, size_t &metadata_size_out) const {
-	metadata_out = metadata;
-	metadata_size_out = metadata_size;
 }
 
 void hashl::resize(hash_offset_type size_asked) {
 	const size_t old_modulus(modulus);
-	const data_offset_type * const old_key_list(key_list);
-	const small_value_type * const old_value_list(value_list);
-	// key for map is offset into hash, which will change, so this needs updating, too
-	std::map<hash_offset_type, value_type> old_value_map;
-	old_value_map.swap(value_map);
 	if (size_asked < 3) {	// to avoid collision_modulus == modulus
 		size_asked = 3;
 	}
@@ -352,15 +285,11 @@ void hashl::resize(hash_offset_type size_asked) {
 	// collision_modulus just needs to be relatively prime with modulus;
 	// since modulus is prime, any value will do - I made it prime for fun
 	collision_modulus = next_prime(size_asked / 2);
-	key_list = new data_offset_type[modulus];
-	value_list = new small_value_type[modulus];
 	// initialize keys and values
-	for (hash_offset_type i(0); i < modulus; ++i) {
-		key_list[i] = invalid_key;
-	}
-	for (hash_offset_type i(0); i < modulus; ++i) {
-		value_list[i] = 0;
-	}
+	std::vector<data_offset_type> old_key_list(modulus, invalid_key);
+	key_list.swap(old_key_list);
+	std::vector<small_value_type> old_value_list(modulus, 0);
+	value_list.swap(old_value_list);
 	// copy over old hash keys and values
 	key_type key(*this), comp_key(*this);
 	for (hash_offset_type i(0); i < old_modulus; ++i) {
@@ -377,15 +306,50 @@ void hashl::resize(hash_offset_type size_asked) {
 			}
 			key_list[new_i] = old_key_list[i];
 			value_list[new_i] = old_value_list[i];
-			if (old_value_list[i] == max_small_value) {
-				// use find() to avoid inserting a value into old_value_map
-				const std::map<hash_offset_type, value_type>::const_iterator a(old_value_map.find(i));
-				if (a != old_value_map.end()) {
-					value_map[new_i] = a->second;
-				}
+		}
+	}
+}
+
+// identical in effect to adding this hash to an empty hash
+
+void hashl::normalize(const small_value_type cutoff) {
+	for (hash_offset_type i(0); i < modulus; ++i) {
+		if (value_list[i] > cutoff) {
+			value_list[i] = invalid_value;
+		} else if (value_list[i] > 1) {
+			value_list[i] = 1;
+		}
+	}
+}
+
+// add in new hash: any values <=cutoff increment existing value,
+// values of >cutoff set to invalid_value
+
+bool hashl::add(const hashl &a, const small_value_type cutoff) {
+	if (used_elements + a.used_elements > a.modulus) {
+		resize(used_elements + a.used_elements);
+	}
+	// copy over data (and make sure to update offsets when adding new entries)
+	const size_t offset(data.size() * sizeof(base_type) * 8);
+	// this pads out the existing data so we don't have to shift all the new data
+	// TODO: see if shifting would actually slow things down much
+	data.reserve(data.size() + a.data.size());
+	data.insert(data.end(), a.data.begin(), a.data.end());
+	// loop over incoming hash and increment or invalidate entries as needed
+	key_type key(a), comp_key(a);
+	for (size_t i(0); i < a.modulus; ++i) {
+		if (a.key_list[i] != invalid_key) {
+			key.copy_in(a.data, a.key_list[i]);
+			comp_key.make_complement(key);
+			const hash_offset_type new_i(insert_offset(key, comp_key, a.key_list[i] + offset));
+			if (new_i == modulus) {
+				return 0;
+			} else if (a.value_list[i] > cutoff) {
+				value_list[new_i] = invalid_value;
+			} else if (value_list[new_i] < max_small_value) {
+				++value_list[new_i];
 			}
 		}
 	}
-	delete[] old_key_list;
-	delete[] old_value_list;
+	return 1;
 }

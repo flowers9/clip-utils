@@ -3,16 +3,14 @@
 
 // This is a class designed to be a memory efficient storage for counting
 // n-mers; keys and values are stored in separate arrays to avoid
-// alignment issues; a map is used to handle the infrequent case of values
-// beyond the size of the small value type
+// alignment issues
 //
 // key values are lookups into an internal array; a metadata blob is also stored
 
-#include "refcount_array.h"	// recount_array
 #include <limits.h>	// UCHAR_MAX, ULONG_MAX
-#include <map>		// map<>
 #include <stdint.h>	// uint64_t
 #include <string>	// string
+#include <vector>	// vector<>
 
 class hashl {
     public:	// type declarations
@@ -21,14 +19,15 @@ class hashl {
 	typedef unsigned long hash_offset_type;
 	typedef unsigned long data_offset_type;
 	typedef uint64_t base_type;
-	enum { max_small_value = UCHAR_MAX, invalid_key = ULONG_MAX };
+	// invalid_value must be greater than max_small_value
+	enum { max_small_value = UCHAR_MAX - 1, invalid_value = UCHAR_MAX, invalid_key = ULONG_MAX };
 
 	class key_type {
 	    private:
+		std::vector<base_type> k;	// stored in reverse - high word in [0]
 		const size_t word_width;
-		base_type * const k;	// stored in reverse - high word in [0]
 	    public:
-		void copy_in(const base_type *, const data_offset_type);
+		void copy_in(const std::vector<base_type> &, const data_offset_type);
 		bool operator==(const key_type &__a) const {
 			for (size_t __i(0); __i < word_width; ++__i) {
 				if (k[__i] != __a.k[__i]) {
@@ -55,14 +54,8 @@ class hashl {
 		const size_t bit_shift;		// precalc for push_front
 		const base_type high_mask;	// precalc for push_back
 	    public:
-		explicit key_type(const hashl &__a) : word_width(__a.words()), k(new base_type[__a.words()]), bit_shift((__a.bits() - 2) % (sizeof(base_type) * 8)), high_mask(static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - __a.bits() % (sizeof(base_type) * 8))) {
-			for (size_t __i(0); __i != word_width; ++__i) {
-				k[__i] = 0;
-			}
-		}
-		~key_type(void) {
-			delete[] k;
-		}
+		explicit key_type(const hashl &__a) : k(__a.words(), 0), word_width(__a.words()), bit_shift((__a.bits() - 2) % (sizeof(base_type) * 8)), high_mask(static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - __a.bits() % (sizeof(base_type) * 8))) { }
+		~key_type(void) { }
 		bool operator<(const key_type &__a) const {
 			for (size_t __i(0); __i != word_width; ++__i) {
 				if (k[__i] != __a.k[__i]) {
@@ -88,34 +81,34 @@ class hashl {
 			k[0] = (__x << bit_shift) | (k[0] >> 2);
 		}
 		void make_complement(const key_type &);
-		bool equal(const base_type *, const data_offset_type) const;
+		bool equal(const std::vector<base_type> &, const data_offset_type) const;
 	};
 
 	class const_iterator {	// only useful for pulling out data
 	    private:
-		const hashl * const list;
+		const hashl &list;
 		hash_offset_type offset;
 	    private:
 		void get_value(void);
 	    public:
 		value_type value;
-		explicit const_iterator(const hashl * const a, const hash_offset_type i) : list(a), offset(i) {
+		explicit const_iterator(const hashl &a, const hash_offset_type i) : list(a), offset(i) {
 			get_value();
 		}
 		~const_iterator(void) { }
 		// don't call on end()
 		void get_key(key_type &key) const {
-			key.copy_in(list->data, list->key_list[offset]);
+			key.copy_in(list.data, list.key_list[offset]);
 		}
 		bool operator==(const const_iterator &__a) const {
-			return list == __a.list && offset == __a.offset;
+			return &list == &__a.list && offset == __a.offset;
 		}
 		bool operator!=(const const_iterator &__a) const {
 			return !(*this == __a);
 		}
 		void increment(void) {
-			if (offset < list->modulus) {
-				for (++offset; offset < list->modulus && list->key_list[offset] == invalid_key; ++offset) { }
+			if (offset < list.modulus) {
+				for (++offset; offset < list.modulus && list.key_list[offset] == invalid_key; ++offset) { }
 				get_value();
 			}
 		}
@@ -131,18 +124,15 @@ class hashl {
 	};
 
     protected:
+	std::vector<data_offset_type> key_list;
+	std::vector<small_value_type> value_list;
+	std::vector<base_type> data;
+	std::vector<char> metadata;
 	hash_offset_type used_elements;
 	hash_offset_type modulus;
 	hash_offset_type collision_modulus;
-	data_offset_type data_size;
-	size_t metadata_size;
 	size_t bit_width;			// only used by key_type
 	size_t word_width;
-	data_offset_type *key_list;
-	small_value_type *value_list;
-	const base_type *data;
-	const void *metadata;
-	std::map<hash_offset_type, value_type> value_map;	// for overflow (offset into key_list)
     protected:
 	std::string boilerplate(void) const;
 	hash_offset_type find_offset(const key_type &) const;
@@ -150,13 +140,14 @@ class hashl {
     private:
 	hash_offset_type insert_key(hash_offset_type, data_offset_type);
     public:
-	explicit hashl(void) : used_elements(0), modulus(0), collision_modulus(0), data_size(0), metadata_size(0), bit_width(0), word_width(0), key_list(0), value_list(0), data(0), metadata(0) { }
+	explicit hashl(void) : used_elements(0), modulus(0), collision_modulus(0), bit_width(0), word_width(0) { }
 	// size of hash, bit size of key_type, sequence data
-	explicit hashl(const hash_offset_type i, const size_t j, const base_type * const d, const data_offset_type d_size) : metadata_size(0), metadata(0) {
-		init(i, j, d, d_size);
+	explicit hashl(const hash_offset_type size, const size_t bits, std::vector<base_type> &data_in) {
+		init(size, bits, data_in);
 	}
-	~hashl(void);
-	void init(hash_offset_type, size_t, const base_type *, data_offset_type);
+	~hashl(void) { }
+	// this trashes data_in by swapping it into the hash
+	void init(hash_offset_type size, size_t bits, std::vector<base_type> &data_in);
 	void init_from_file(int);
 	// will not insert new key
 	bool increment(const key_type &);
@@ -178,18 +169,27 @@ class hashl {
 	size_t words(void) const {
 		return word_width;
 	}
-	hash_offset_type overflow_size(void) const {
-		return value_map.size();
-	}
 	const_iterator begin(void) const;
 	const_iterator end(void) const;
 	const_iterator find(const key_type &key) const {
-		return const_iterator(this, find_offset(key));
+		return const_iterator(*this, find_offset(key));
 	}
 	void save(int) const;
-	void set_metadata(const void *metadata_in, size_t metadata_size_in);
-	void get_metadata(const void * &metadata_out, size_t &metadata_size_out) const;
-	void resize(hash_offset_type);
+	void set_metadata(std::vector<char> &metadata_in) {
+		metadata.swap(metadata_in);
+	}
+	const std::vector<char> &get_metadata(void) const {
+		return metadata;
+	}
+	const std::vector<base_type> &get_data(void) const {
+		return data;
+	}
+	void resize(hash_offset_type new_size);
+	// set values <= cutoff to 1, values > cutoff to invalid_value
+	void normalize(small_value_type cutoff = 1);
+	// add in new hashl - add new data, add or modify values
+	// (<=cutoff => ++, >cutoff => invalid)
+	bool add(const hashl &, small_value_type cutoff = 1);
 };
 
 #endif // !_HASHL_H
