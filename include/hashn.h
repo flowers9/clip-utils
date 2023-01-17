@@ -9,7 +9,7 @@
 // The alt_list/alt_map arrays are available for storing extra information
 // associated with each element in an efficient manner.
 
-#include "refcount_array.h"	// recount_array
+#include "refcount_array.h"	// refcount_array
 #include <algorithm>	// swap()
 #include <limits.h>	// UCHAR_MAX, ULONG_MAX
 #include <list>		// list<>

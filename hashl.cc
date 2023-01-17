@@ -310,22 +310,25 @@ void hashl::resize(hash_offset_type size_asked) {
 	}
 }
 
-// identical in effect to adding this hash to an empty hash
+// identical in effect to add()ing this hash to an empty hash
+// (except that values <min_cutoff are set to zero rather than removed)
 
-void hashl::normalize(const small_value_type cutoff) {
+void hashl::normalize(const small_value_type min_cutoff, const small_value_type max_cutoff) {
 	for (hash_offset_type i(0); i < modulus; ++i) {
-		if (value_list[i] > cutoff) {
+		if (value_list[i] < min_cutoff) {
+			value_list[i] = 0;
+		} else if (value_list[i] > max_cutoff) {
 			value_list[i] = invalid_value;
-		} else if (value_list[i] > 1) {
+		} else {
 			value_list[i] = 1;
 		}
 	}
 }
 
-// add in new hash: any values <=cutoff increment existing value,
-// values of >cutoff set to invalid_value
+// add in new hash: any values <min_cutoff ignored, <=max_cutoff increment existing value,
+// values of >max_cutoff set to invalid_value
 
-bool hashl::add(const hashl &a, const small_value_type cutoff) {
+bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_value_type max_cutoff) {
 	if (used_elements + a.used_elements > a.modulus) {
 		resize(used_elements + a.used_elements);
 	}
@@ -344,7 +347,8 @@ bool hashl::add(const hashl &a, const small_value_type cutoff) {
 			const hash_offset_type new_i(insert_offset(key, comp_key, a.key_list[i] + offset));
 			if (new_i == modulus) {
 				return 0;
-			} else if (a.value_list[i] > cutoff) {
+			} else if (a.value_list[i] < min_cutoff) {
+			} else if (a.value_list[i] > max_cutoff) {
 				value_list[new_i] = invalid_value;
 			} else if (value_list[new_i] < max_small_value) {
 				++value_list[new_i];

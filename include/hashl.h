@@ -186,10 +186,10 @@ class hashl {
 	}
 	void resize(hash_offset_type new_size);
 	// set values <= cutoff to 1, values > cutoff to invalid_value
-	void normalize(small_value_type cutoff = 1);
+	void normalize(small_value_type min_cutoff = 0, small_value_type max_cutoff = 1);
 	// add in new hashl - add new data, add or modify values
-	// (<=cutoff => ++, >cutoff => invalid)
-	bool add(const hashl &, small_value_type cutoff = 1);
+	// (<min_cutoff => ignored, <=cutoff => ++, >cutoff => invalid)
+	bool add(const hashl &, small_value_type min_cutoff = 0, small_value_type max_cutoff = 1);
 };
 
 #endif // !_HASHL_H
