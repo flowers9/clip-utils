@@ -3,29 +3,29 @@
 #include "time_used.h"	// elapsed_time(), start_time()
 #include "version.h"	// VERSION
 #include "write_fork.h"	// close_fork(), write_fork()
+#include <fstream>	// ofstream
 #include <getopt.h>	// getopt(), optarg, optind
+#include <iostream>	// cerr, cout, ostream
 #include <list>		// list<>
 #include <map>		// map<>
 #include <set>		// set<>
-#include <sstream>	// istringstream, ostringstream
+#include <sstream>	// istringstream
 #include <stdint.h>	// uint64_t
-#include <stdio.h>	// EOF, fprintf(), stderr, stdout
 #include <stdlib.h>	// exit()
-#include <string.h>	// memcpy(), strlen()
+#include <string.h>	// memcpy()
 #include <string>	// string
 #include <utility>	// make_pair(), pair<>
 #include <vector>	// vector<>
 
-static FILE *fp_out(stdout);
 static bool opt_feedback;
 static bool opt_print_gc;
 static double opt_load_lower_bound;
 static double opt_load_upper_bound;
 static int opt_histogram_restore;
+static size_t opt_frequency_cutoff;
 static size_t opt_mer_length;
 static size_t opt_nmers;
 static std::string opt_save_file;
-static unsigned long opt_frequency_cutoff;
 
 class hash_metadata {
     private:				// convenience variables for read_data()
@@ -82,7 +82,7 @@ static hashl::base_type convert_char(const char c) {
 	    case 't':
 		return 3;
 	    default:
-		fprintf(stderr, "Error: non-ACGT basepair: %c\n", c);
+		std::cerr << "Error: non-ACGT basepair: " << static_cast<char>(c) << "\n";
 		exit(1);
 	}
 }
@@ -104,13 +104,13 @@ void hash_metadata::get_subreads(const std::string &seq, const std::vector<std::
 void hash_metadata::read_file(const size_t i) {
 	const int fd(open_compressed(files[i]));
 	if (fd == -1) {
-		fprintf(stderr, "Error: open: %s\n", files[i].c_str());
+		std::cerr << "Error: open: " << files[i] << "\n";
 		exit(1);
 	}
 	size_t j(0);	// which read we're on (but only incremented for reads we use)
 	std::string line, seq;
 	if (pfgets(fd, line) == -1) {		// empty file
-		fprintf(stderr, "Error: File is now empty: %s\n", files[i].c_str());
+		std::cerr << "Error: File is now empty: " << files[i] << "\n";
 		exit(1);
 	} else if (line[0] == '>') {		// fasta file
 		std::string header;
@@ -130,7 +130,7 @@ void hash_metadata::read_file(const size_t i) {
 	} else if (line[0] == '@') {		// fastq file
 		do {
 			if (pfgets(fd, seq) == -1) {		// sequence
-				fprintf(stderr, "Error: truncated fastq file: %s\n", files[i].c_str());
+				std::cerr << "Error: truncated fastq file: " << files[i] << "\n";
 				exit(1);
 			}
 			const std::string &read_name(reads[i][j]);
@@ -141,16 +141,16 @@ void hash_metadata::read_file(const size_t i) {
 			// skip quality header and quality
 			// (use seq because it'll be the same length as quality)
 			if (pfgets(fd, line) == -1 || pfgets(fd, seq) == -1) {
-				fprintf(stderr, "Error: truncated fastq file: %s\n", files[i].c_str());
+				std::cerr << "Error: truncated fastq file: " << files[i] << "\n";
 				exit(1);
 			}
 		} while (j < reads[i].size() && pfgets(fd, line) != -1);
 	} else {
-		fprintf(stderr, "Error: unknown file format: %s\n", files[i].c_str());
+		std::cerr << "Error: unknown file format: " << files[i] << "\n";
 		exit(1);
 	}
 	if (j < reads[i].size()) {
-		fprintf(stderr, "Error: File is shorter than before: %s\n", files[i].c_str());
+		std::cerr << "Error: File is shorter than before: " << files[i] << "\n";
 		exit(1);
 	}
 	close_compressed(fd);
@@ -175,7 +175,7 @@ void hash_metadata::read_data(std::vector<hashl::base_type> &data_out) {
 	bit_offset = sizeof(hashl::base_type) * 8;
 	for (size_t i(0); i < files.size(); ++i) {
 		if (opt_feedback) {
-			fprintf(stderr, "%lu: Reading in %s\n", time(0), files[i].c_str());
+			std::cerr << time(0) << ": Reading in " << files[i] << "\n";
 		}
 		read_file(i);
 	}
@@ -326,18 +326,18 @@ void hash_metadata::unpack(const std::vector<char> &d) {
 		}
 	}
 	if (d.size() != offset) {
-		fprintf(stderr, "Error: metadata size mismatch: %lu != %lu\n", d.size(), offset);
+		std::cerr << "Error: metadata size mismatch: " << d.size() << " != " << offset << "\n";
 		exit(1);
 	}
 }
 
 void hash_metadata::print() const {
 	for (size_t i(0); i < files.size(); ++i) {
-		printf("%s\n", files[i].c_str());
+		std::cout << files[i].c_str() << "\n";
 		for (size_t j(0); j < reads[i].size(); ++j) {
-			printf("\t%s\n", reads[i][j].c_str());
+			std::cout << "\t" << reads[i][j].c_str() << "\n";
 			for (size_t k(0); k < read_ranges[i][j].size(); ++k) {
-				printf("\t\t%lu %lu\n", read_ranges[i][j][k].first, read_ranges[i][j][k].second);
+				std::cout << "\t\t" << read_ranges[i][j][k].first << ' ' << read_ranges[i][j][k].second << "\n";
 			}
 		}
 	}
@@ -362,7 +362,7 @@ static void save_memory(const hashl &mer_list) {
 	}
 	const int fd(write_fork(args, opt_save_file));
 	if (fd == -1) {
-		fprintf(stderr, "Error: could not save memory\n");
+		std::cerr << "Error: could not save memory\n";
 		exit(1);
 	}
 	mer_list.save(fd);
@@ -390,23 +390,23 @@ static void reverse_key(const hashl::key_type &key_in, hashl::key_type &key_out)
 
 void print_final_input_feedback(const hashl &mer_list) {
 	if (opt_feedback && mer_list.size() != 0) {
-		fprintf(stderr, "%lu: %10lu entries used (%5.2f%%)\n", time(0), mer_list.size(), double(100) * mer_list.size() / mer_list.capacity());
+		std::cerr << time(0) << ": " << mer_list.size() << " entries used (" << double(100) * mer_list.size() / mer_list.capacity() << ")\n";
 	}
 }
 
 // print n-mer occurence frequency
 
-static void print_mer_frequency(const hashl &mer_list) {
+static void print_mer_frequency(std::ostream &fp_out, const hashl &mer_list) {
 	hashl::key_type key(mer_list), comp_key(mer_list);
 	hashl::const_iterator a(mer_list.begin());
 	const hashl::const_iterator end_a(mer_list.end());
 	for (; a != end_a; ++a) {
-		if (a.value >= opt_frequency_cutoff) {
+		if (a.value() >= opt_frequency_cutoff) {
 			a.get_key(key);
-			fprintf(fp_out, "%s %lu\n", convert_key(key).c_str(), a.value);
+			fp_out << convert_key(key) << ' ' << a.value() << "\n";
 			reverse_key(key, comp_key);
 			if (key != comp_key) {
-				fprintf(fp_out, "%s %lu\n", convert_key(comp_key).c_str(), a.value);
+				fp_out << convert_key(comp_key) << ' ' << a.value() << "\n";
 			}
 		}
 	}
@@ -430,17 +430,17 @@ static unsigned long count_gc(const hashl::key_type &key) {
 // print histogram of n-mer occurrences, potentially with gc percent at given
 // frequencies
 
-static void print_mer_histogram(const hashl &mer_list) {
+static void print_mer_histogram(std::ostream &fp_out, const hashl &mer_list) {
 	std::map<hashl::value_type, unsigned long> counts;
 	std::map<hashl::value_type, unsigned long> gc_counts;
 	hashl::key_type key(mer_list), comp_key(mer_list);
 	hashl::const_iterator a(mer_list.begin());
 	const hashl::const_iterator end_a(mer_list.end());
 	for (; a != end_a; ++a) {
-		++counts[a.value];
+		++counts[a.value()];
 		if (opt_print_gc) {
 			a.get_key(key);
-			gc_counts[a.value] += count_gc(key);
+			gc_counts[a.value()] += count_gc(key);
 		}
 	}
 	std::map<hashl::value_type, unsigned long>::const_iterator c(counts.begin());
@@ -456,7 +456,7 @@ static void print_mer_histogram(const hashl &mer_list) {
 	}
 	c = counts.begin();
 	if (c != end_c && c->first == 1) {
-		fprintf(fp_out, "%lu %lu\n", c->first, c->second);
+		fp_out <<  c->first << ' ' << c->second << "\n";
 		++c;
 	}
 	double i(0);
@@ -464,9 +464,9 @@ static void print_mer_histogram(const hashl &mer_list) {
 		const double x(100 * static_cast<double>(c->first) * static_cast<double>(c->second));
 		i += x;
 		if (opt_print_gc) {
-			fprintf(fp_out, "%lu %lu %.2f %.2f %.2f\n", c->first, c->second, x / total, i / total, 100 * static_cast<double>(gc_counts[c->first]) / static_cast<double>(c->second) / static_cast<double>(opt_mer_length));
+			fp_out << c->first << ' ' << c->second << ' ' << x / total << ' ' << i / total << ' ' << 100 * static_cast<double>(gc_counts[c->first]) / static_cast<double>(c->second) / static_cast<double>(opt_mer_length) << "\n";
 		} else {
-			fprintf(fp_out, "%lu %lu %.2f %.2f\n", c->first, c->second, x / total, i / total);
+			fp_out << c->first << ' ' << c->second << ' ' << x / total << ' ' << i / total << "\n";
 		}
 	}
 }
@@ -502,7 +502,7 @@ static size_t get_value(const std::string s) {
 // print usage statement and exit
 
 static void print_usage() {
-	fprintf(stderr,
+	std::cerr <<
 		"usage: histogram [options] file1 [file2] ...\n"
 		"    -g    print percent gc content at each frequency\n"
 		"    -h    print this information\n"
@@ -517,12 +517,12 @@ static void print_usage() {
 		"    -w ## print frequency count instead of histogram, for all n-mers with\n"
 		"          a frequency of at least ## [0 (off)]\n"
 		"    -z ## number of possible n-mers to allocate memory for (overrides -l/-L)\n"
-		"          (k, m, or g may be suffixed)\n"
-	);
+		"          (k, m, or g may be suffixed)\n";
 	exit(1);
 }
 
-static void get_opts(int argc, char **argv) {
+static std::ostream &get_opts(int argc, char **argv) {
+	static std::ofstream fp_out;		// static so we can pass out a reference
 	std::set<std::string> used_files;	// make sure there're no overlaps
 	std::string opt_output;
 	opt_feedback = 1;
@@ -554,42 +554,42 @@ static void get_opts(int argc, char **argv) {
 		    case 'm':
 			std::istringstream(optarg) >> opt_mer_length;
 			if (opt_mer_length < 1) {
-				fprintf(stderr, "Error: bad mer length\n");
+				std::cerr << "Error: bad mer length\n";
 				exit(1);
 			}
 			break;
 		    case 'o':
 			opt_output = optarg;
 			if (!used_files.insert(optarg).second) {
-				fprintf(stderr, "Error: duplicate file: %s\n", optarg);
+				std::cerr << "Error: duplicate file: " << optarg << "\n";
 				exit(1);
 			}
 			break;
 		    case 's':
 			opt_save_file = optarg;
 			if (!used_files.insert(optarg).second) {
-				fprintf(stderr, "Error: duplicate file: %s\n", optarg);
+				std::cerr << "Error: duplicate file: " << optarg << "\n";
 				exit(1);
 			}
 			break;
 		    case 'S':
 			opt_histogram_restore = open_compressed(optarg);
 			if (opt_histogram_restore == -1) {
-				fprintf(stderr, "Error: could not read histogram dump file\n");
+				std::cerr << "Error: could not read histogram dump file\n";
 				exit(1);
 			} else if (!used_files.insert(optarg).second) {
-				fprintf(stderr, "Error: duplicate file: %s\n", optarg);
+				std::cerr << "Error: duplicate file: " << optarg << "\n";
 				exit(1);
 			}
 			break;
 		    case 'V':
-			fprintf(stderr, "histogram_hashl version %s%s\n", VERSION,
+			std::cerr << "histogram_hashl version " << VERSION <<
 #ifdef COMPRESS_READS
-" (read compression)"
+				" (read compression)"
 #else
-""
+				""
 #endif
-);
+				<< "\n";
 			exit(0);
 		    case 'w':
 			std::istringstream(optarg) >> opt_frequency_cutoff;
@@ -598,31 +598,32 @@ static void get_opts(int argc, char **argv) {
 			opt_nmers = get_value(optarg);
 			break;
 		    default:
-			fprintf(stderr, "Error: unknown option %c\n", c);
+			std::cerr << "Error: unknown option " << static_cast<char>(c) << "\n";
 			print_usage();
 		}
 	}
 	if (opt_load_lower_bound > opt_load_upper_bound) {
-		fprintf(stderr, "Error: lower hash fill fraction must be less than upper\n");
+		std::cerr << "Error: lower hash fill fraction must be less than upper\n";
 		print_usage();
 	}
 	if (optind == argc && opt_histogram_restore == -1) {
-		fprintf(stderr, "Error: no files to process\n");
+		std::cerr << "Error: no files to process\n";
 		print_usage();
 	}
 	for (int i(optind); i < argc; ++i) {
 		if (!used_files.insert(argv[i]).second) {
-			fprintf(stderr, "Error: duplicate file: %s\n", argv[i]);
+			std::cerr << "Error: duplicate file: " << argv[i] << "\n";
 			exit(1);
 		}
 	}
 	if (!opt_output.empty()) {
-		fp_out = fopen(opt_output.c_str(), "w");
-		if (!fp_out) {
-			fprintf(stderr, "Error: could not write to %s\n", opt_output.c_str());
+		fp_out.open(opt_output);
+		if (!fp_out.is_open()) {
+			std::cerr << "Error: could not write to " << opt_output << "\n";
 			exit(1);
 		}
 	}
+	return opt_output.empty() ? std::cout : fp_out;
 }
 
 // for non-ACGT basepairs, need to split reads
@@ -646,12 +647,12 @@ static void get_subread_sizes(const std::string &seq, hash_metadata &metadata) {
 static void get_read_sizes(const char * const file, hash_metadata &metadata) {
 	const int fd(open_compressed(file));
 	if (fd == -1) {
-		fprintf(stderr, "Error: open: %s\n", file);
+		std::cerr << "Error: open: " << file << "\n";
 		exit(1);
 	}
 	std::string line, seq;
 	if (pfgets(fd, line) == -1) {		// empty file
-		fprintf(stderr, "Warning: empty file: %s\n", file);
+		std::cerr << "Warning: empty file: " << file << "\n";
 	} else if (line[0] == '>') {		// fasta file
 		do {
 			size_t i(1);
@@ -669,19 +670,19 @@ static void get_read_sizes(const char * const file, hash_metadata &metadata) {
 			for (; i < line.size() && !isspace(line[i]); ++i) { }
 			metadata.add_read(line.substr(1, i - 1));
 			if (pfgets(fd, seq) == -1) {		// sequence
-				fprintf(stderr, "Error: truncated fastq file: %s\n", file);
+				std::cerr << "Error: truncated fastq file: " << file << "\n";
 				exit(1);
 			}
 			get_subread_sizes(seq, metadata);
 			// skip quality header and quality
 			// (use seq because it'll be the same length as quality)
 			if (pfgets(fd, line) == -1 || pfgets(fd, seq) == -1) {
-				fprintf(stderr, "Error: truncated fastq file: %s\n", file);
+				std::cerr << "Error: truncated fastq file: " << file << "\n";
 				exit(1);
 			}
 		} while (pfgets(fd, line) != -1);
 	} else {
-		fprintf(stderr, "Error: unknown file format: %s\n", file);
+		std::cerr << "Error: unknown file format: " << file << "\n";
 		exit(1);
 	}
 	close_compressed(fd);
@@ -699,7 +700,7 @@ static void count_nmers(hashl &mer_list, const std::vector<size_t> &read_ends) {
 		// print feedback every 10 minutes
 		if (opt_feedback && elapsed_time() >= 600) {
 			start_time();
-			fprintf(stderr, "%lu: %10lu entries used (%5.2f%%) (%lu read ranges)\n", time(0), mer_list.size(), double(100) * mer_list.size() / mer_list.capacity(), total_read_ranges);
+			std::cerr << time(0) << ": " << mer_list.size() << " entries used (" << double(100) * mer_list.size() / mer_list.capacity() << ") (" << total_read_ranges << " read ranges)\n";
 		}
 		const size_t end_i(i + opt_mer_length - 1);
 		// load keys with opt_mer_length - 1 basepairs
@@ -727,7 +728,7 @@ static void count_nmers(hashl &mer_list, const std::vector<size_t> &read_ends) {
 			}
 			// increment with bit offset to start of nmer
 			if (!mer_list.increment(key, comp_key, 2 * (i + 1 - opt_mer_length))) {
-				fprintf(stderr, "Error: ran out of space in hash\n");
+				std::cerr << "Error: ran out of space in hash\n";
 				exit(1);
 			}
 		}
@@ -743,7 +744,7 @@ static void read_in_files(int argc, char **argv, hashl &mer_list) {
 	hash_metadata metadata;
 	for (size_t i(0); i < file_count; ++i) {
 		if (opt_feedback) {
-			fprintf(stderr, "%lu: Getting read sizes for %s\n", time(0), argv[i + optind]);
+			std::cerr << time(0) << ": Getting read sizes for " << argv[i + optind] << "\n";
 		}
 		metadata.add_file(argv[i + optind]);
 		get_read_sizes(argv[i + optind], metadata);
@@ -751,7 +752,7 @@ static void read_in_files(int argc, char **argv, hashl &mer_list) {
 	std::vector<hashl::base_type> data;
 	metadata.read_data(data);
 	if (opt_feedback) {
-		fprintf(stderr, "%lu: Initializing n-mer hash\n", time(0));
+		std::cerr << time(0) << ": Initializing n-mer hash\n";
 	}
 	// put data and metadata into mer_list
 	mer_list.init(opt_nmers ? opt_nmers : metadata.max_kmers(), opt_mer_length * 2, data);
@@ -760,7 +761,7 @@ static void read_in_files(int argc, char **argv, hashl &mer_list) {
 	mer_list.set_metadata(packed_metadata);
 	if (opt_feedback) {
 		std::pair<size_t, size_t> read_count(metadata.total_reads());
-		fprintf(stderr, "%lu: Counting n-mers for %lu reads (%lu ranges)\n", time(0), read_count.first, read_count.second);
+		std::cerr << time(0) << ": Counting n-mers for " << read_count.first << " reads (" << read_count.second << " ranges)\n";
 		start_time();
 	}
 	const std::vector<size_t> read_ends(metadata.read_ends());
@@ -772,7 +773,7 @@ static void read_in_files(int argc, char **argv, hashl &mer_list) {
 	const double load(double(mer_list.size()) / mer_list.capacity());
 	if (load < opt_load_lower_bound || opt_load_upper_bound < load) {
 		if (opt_feedback) {
-			fprintf(stderr, "%lu: hash fill rate out of range, resizing: %f - %f: %f\n", time(0), opt_load_lower_bound, opt_load_upper_bound, load);
+			std::cerr << time(0) << ": hash fill rate out of range, resizing: " << opt_load_lower_bound << " - " << opt_load_upper_bound << ": " << load << "\n";
 		}
 		mer_list.resize(mer_list.size() * 2 / (opt_load_lower_bound + opt_load_upper_bound));
 		if (opt_feedback) {
@@ -782,11 +783,11 @@ static void read_in_files(int argc, char **argv, hashl &mer_list) {
 }
 
 int main(int argc, char **argv) {
-	get_opts(argc, argv);
+	std::ostream &fp_out(get_opts(argc, argv));
 	hashl mer_list;
 	if (opt_histogram_restore != -1) {
 		if (opt_feedback) {
-			fprintf(stderr, "%lu: Initializing n-mer hash\n", time(0));
+			std::cerr << time(0) << ": Initializing n-mer hash\n";
 		}
 		mer_list.init_from_file(opt_histogram_restore);
 		if (opt_feedback) {
@@ -797,16 +798,14 @@ int main(int argc, char **argv) {
 		read_in_files(argc, argv, mer_list);
 	}
 	if (opt_feedback) {
-		fprintf(stderr, "%lu: Printing results\n", time(0));
+		std::cerr << time(0) << ": Printing results\n";
 	}
 	if (opt_frequency_cutoff == 0) {
-		print_mer_histogram(mer_list);
+		print_mer_histogram(fp_out, mer_list);
 	} else {
-		print_mer_frequency(mer_list);
+		print_mer_frequency(fp_out, mer_list);
 	}
-	if (fp_out != stdout) {
-		fclose(fp_out);
-	}
+	fp_out.flush();
 	if (!opt_save_file.empty()) {
 		save_memory(mer_list);
 	}

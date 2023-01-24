@@ -4,8 +4,10 @@
 #include "next_prime.h"	// next_prime()
 #include "open_compressed.h"	// pfread()
 #include "write_fork.h"	// pfwrite()
+#include <iomanip>	// setw()
+#include <iostream>	// cerr, cout
 #include <map>		// map<>
-#include <stdio.h>	// fprintf(), stderr
+#include <stdint.h>	// uint64_t
 #include <stdlib.h>	// exit()
 #include <string.h>	// memcmp(), memcpy()
 #include <string>	// string
@@ -37,7 +39,7 @@ void hashl::init_from_file(const int fd) {
 	char t[s.size()];
 	pfread(fd, t, s.size());
 	if (memcmp(t, s.c_str(), s.size()) != 0) {
-		fprintf(stderr, "Error: could not read hash from file: header mismatch\n");
+		std::cerr << "Error: could not read hash from file: header mismatch\n";
 		exit(1);
 	}
 	pfread(fd, &modulus, sizeof(modulus));
@@ -182,6 +184,16 @@ void hashl::key_type::make_complement(const hashl::key_type &key) {
 	}
 }
 
+void hashl::key_type::convert_to_string(std::string &sequence) const {
+	const char values[4] = { 'A', 'C', 'G', 'T' };
+	sequence.clear();
+	const size_t bit_width(bit_shift + 2 + (word_width - 1) * sizeof(base_type) * 8);
+	// relies on wrap-around for termination
+	for (size_t i(bit_width - 2); i < bit_width; i -= 2) {
+		sequence += values[basepair(i)];
+	}
+}
+
 // find a key; return modulus as offset if not found
 
 hashl::hash_offset_type hashl::find_offset(const key_type &key) const {
@@ -246,14 +258,6 @@ hashl::const_iterator hashl::begin() const {
 		++a;
 	}
 	return a;
-}
-
-hashl::const_iterator hashl::end() const {
-	return const_iterator(*this, modulus);
-}
-
-void hashl::const_iterator::get_value() {
-	value = offset < list.modulus ? list.value_list[offset] : 0;
 }
 
 void hashl::save(const int fd) const {
@@ -356,4 +360,27 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 		}
 	}
 	return 1;
+}
+
+// for debugging
+
+void hashl::print() const {
+	int max_width(1);
+	for (size_t i(10); i < data.size() * sizeof(base_type) * 8; i *= 10, ++max_width) { }
+	std::cout << "modulus: " << modulus << "\n"
+		<< "collision modulus: " << collision_modulus << "\n"
+		<< "used elements: " << used_elements << "\n"
+		<< "bit width: " << bit_width << "\n"
+		<< "metadata size: " << metadata.size() << "\n"
+		<< "data size: " << data.size() * sizeof(base_type) << "\n"
+		<< "offset/value/key pairs:\n";
+	std::string s;
+	key_type k(*this);
+	for (hash_offset_type i(0); i < modulus; ++i) {
+		if (key_list[i] != invalid_key) {
+			k.copy_in(data, key_list[i]);
+			k.convert_to_string(s);
+			std::cout << std::setw(max_width) << key_list[i] << ' ' << std::setw(3) << static_cast<unsigned int>(value_list[i]) << ' ' << s << "\n";
+		}
+	}
 }

@@ -5,7 +5,7 @@
 // n-mers; keys and values are stored in separate arrays to avoid
 // alignment issues
 //
-// key values are lookups into an internal array; a metadata blob is also stored
+// key values are offsets into an internal array; a metadata blob is also stored
 
 #include <limits.h>	// UCHAR_MAX, ULONG_MAX
 #include <stdint.h>	// uint64_t
@@ -81,35 +81,78 @@ class hashl {
 			k[0] = (__x << bit_shift) | (k[0] >> 2);
 		}
 		void make_complement(const key_type &);
+		void convert_to_string(std::string &) const;
 		bool equal(const std::vector<base_type> &, const data_offset_type) const;
 	};
 
-	class const_iterator {	// only useful for pulling out data
+	class iterator {
+	    private:
+		hashl &list;
+		hash_offset_type offset_;
+	    public:
+		explicit iterator(hashl &a, const hash_offset_type i) : list(a), offset_(i) { }
+		~iterator(void) { }
+		// value()/key() undefined if called when pointing to end()
+		small_value_type value(void) const {
+			return list.value_list[offset_];
+		}
+		hash_offset_type offset(void) const {
+			return offset_;
+		}
+		void value(const small_value_type i) {
+			list.value_list[offset_] = i;
+		}
+		void get_key(key_type &key) const {
+			key.copy_in(list.data, list.key_list[offset_]);
+		}
+		bool operator==(const iterator &__a) const {
+			return &list == &__a.list && offset_ == __a.offset_;
+		}
+		bool operator!=(const iterator &__a) const {
+			return !(*this == __a);
+		}
+		void increment(void) {
+			if (offset_ < list.modulus) {
+				for (++offset_; offset_ < list.modulus && list.key_list[offset_] == invalid_key; ++offset_) { }
+			}
+		}
+		iterator operator++(void) {
+			increment();
+			return *this;
+		}
+		iterator operator++(int) {
+			const iterator __tmp(*this);
+			increment();
+			return __tmp;
+		}
+	};
+
+	class const_iterator {
 	    private:
 		const hashl &list;
-		hash_offset_type offset;
-	    private:
-		void get_value(void);
+		hash_offset_type offset_;
 	    public:
-		value_type value;
-		explicit const_iterator(const hashl &a, const hash_offset_type i) : list(a), offset(i) {
-			get_value();
-		}
+		explicit const_iterator(const hashl &a, const hash_offset_type i) : list(a), offset_(i) { }
 		~const_iterator(void) { }
-		// don't call on end()
+		// value()/key() undefined if called when pointing to end()
+		small_value_type value(void) const {
+			return list.value_list[offset_];
+		}
+		hash_offset_type offset(void) const {
+			return offset_;
+		}
 		void get_key(key_type &key) const {
-			key.copy_in(list.data, list.key_list[offset]);
+			key.copy_in(list.data, list.key_list[offset_]);
 		}
 		bool operator==(const const_iterator &__a) const {
-			return &list == &__a.list && offset == __a.offset;
+			return &list == &__a.list && offset_ == __a.offset_;
 		}
 		bool operator!=(const const_iterator &__a) const {
 			return !(*this == __a);
 		}
 		void increment(void) {
-			if (offset < list.modulus) {
-				for (++offset; offset < list.modulus && list.key_list[offset] == invalid_key; ++offset) { }
-				get_value();
+			if (offset_ < list.modulus) {
+				for (++offset_; offset_ < list.modulus && list.key_list[offset_] == invalid_key; ++offset_) { }
 			}
 		}
 		const_iterator operator++(void) {
@@ -170,7 +213,9 @@ class hashl {
 		return word_width;
 	}
 	const_iterator begin(void) const;
-	const_iterator end(void) const;
+	const_iterator end(void) const {
+		return const_iterator(*this, modulus);
+	}
 	const_iterator find(const key_type &key) const {
 		return const_iterator(*this, find_offset(key));
 	}
@@ -190,6 +235,7 @@ class hashl {
 	// add in new hashl - add new data, add or modify values
 	// (<min_cutoff => ignored, <=cutoff => ++, >cutoff => invalid)
 	bool add(const hashl &, small_value_type min_cutoff = 0, small_value_type max_cutoff = 1);
+	void print(void) const;
 };
 
 #endif // !_HASHL_H

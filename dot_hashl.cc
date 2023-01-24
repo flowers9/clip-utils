@@ -1,6 +1,6 @@
 #include "hashl.h"	// hashl
 #include "next_prime.h"	// next_prime()
-#include "open_compressed.h"	// close_compressed(), get_suffix(), open_compressed(), pfread()
+#include "open_compressed.h"	// close_compressed(), get_suffix(), open_compressed()
 #include "write_fork.h"	// close_fork(), write_fork()
 #include "version.h"	// VERSION
 #include <getopt.h>	// getopt(), optarg, optind
@@ -16,6 +16,7 @@
 
 static int opt_fastq_max_kmer_frequency;
 static int opt_fastq_min_kmer_frequency;
+static int opt_hash_load;
 static int opt_max_kmer_sharing;
 static int opt_reference_max_kmer_frequency;
 static int opt_reference_min_kmer_frequency;
@@ -30,21 +31,23 @@ static void print_usage() {
 		"    -m ## reference min kmer frequency\n"
 		"    -M ## reference max kmer frequency [1]\n"
 		"    -r ## add reference file (may be specified multiple times)\n"
-		"    -S ## save resulting combined reference hash as ##\n"
+		"    -s ## save resulting combined reference hash\n"
+		"    -S ## load histogram memory dump from given file\n"
 		"    -u ## only count kmers shared with at most ## references\n"
 		"          (negative values mean shared by all but ##) [-1]\n"
 		"    -V    print version\n";
 	exit(1);
 }
 
-static void get_opts(const int argc, char * const * argv) {
+static void get_opts(const int argc, char * const * const argv) {
 	opt_fastq_max_kmer_frequency = hashl::max_small_value;
 	opt_fastq_min_kmer_frequency = 0;
+	opt_hash_load = -1;
 	opt_max_kmer_sharing = -1;
 	opt_reference_max_kmer_frequency = 1;
 	opt_reference_min_kmer_frequency = 0;
 	int c;
-	while ((c = getopt(argc, argv, "hf:F:m:M:r:S:u:V")) != EOF) {
+	while ((c = getopt(argc, argv, "hf:F:m:M:r:s:S:u:V")) != EOF) {
 		switch (c) {
 		    case 'h':
 			print_usage();
@@ -64,8 +67,15 @@ static void get_opts(const int argc, char * const * argv) {
 		    case 'r':
 			opt_reference_list.push_back(optarg);
 			break;
-		    case 'S':
+		    case 's':
 			opt_hash_save = optarg;
+			break;
+		    case 'S':
+			opt_hash_load = open_compressed(optarg);
+			if (opt_hash_load == -1) {
+				std::cerr << "Error: could not read histogram dump file\n";
+				exit(1);
+			}
 			break;
 		    case 'u':
 			std::istringstream(optarg) >> opt_max_kmer_sharing;
@@ -88,11 +98,18 @@ static void get_opts(const int argc, char * const * argv) {
 	if (opt_max_kmer_sharing < 0) {
 		opt_max_kmer_sharing += opt_reference_list.size();
 	}
+	if (opt_max_kmer_sharing < 1 || opt_reference_list.size() < static_cast<size_t>(opt_max_kmer_sharing)) {
+		std::cerr << "Error: -u option out of range: 1-" << opt_reference_list.size() << ": " << opt_max_kmer_sharing << "\n";
+		exit(1);
+	}
+	if (opt_hash_load != -1 && !opt_hash_save.empty()) {
+		std::cerr << "Warning: ignoring -s option because of -S\n";
+	}
 }
 
-static void save_memory(const hashl &mer_list) {
+static void save_hash(const hashl &mer_list, const std::string &filename) {
 	std::string suffix;
-	get_suffix(opt_hash_save, suffix);
+	get_suffix(filename, suffix);
 	std::list<std::string> args;
 	if (suffix == ".gz") {
 		args.push_back("gzip");
@@ -107,9 +124,9 @@ static void save_memory(const hashl &mer_list) {
 		args.push_back("compress");
 		args.push_back("-c");
 	}
-	const int fd(write_fork(args, opt_hash_save));
+	const int fd(write_fork(args, filename));
 	if (fd == -1) {
-		fprintf(stderr, "Error: could not save memory\n");
+		std::cerr << "Error: could not save hash " << filename << "\n";
 		exit(1);
 	}
 	mer_list.save(fd);
@@ -127,6 +144,8 @@ static bool load_and_combine_hashes(hashl &kmer_hash, const std::vector<std::str
 		return 0;
 	}
 	kmer_hash.init_from_file(fd);
+kmer_hash.print();
+std::cout << "\n";
 	kmer_hash.normalize(min_cutoff, max_cutoff);
 	hashl tmp_hash;			// declare outside loop so memory can get reused
 	for (++a; a != end_a; ++a) {
@@ -137,6 +156,8 @@ static bool load_and_combine_hashes(hashl &kmer_hash, const std::vector<std::str
 			return 0;
 		}
 		tmp_hash.init_from_file(fd);
+tmp_hash.print();
+std::cout << "\n";
 		if (!kmer_hash.add(tmp_hash, min_cutoff, max_cutoff)) {
 			std::cerr << "Error: failed to add hash\n";
 			return 0;
@@ -144,28 +165,57 @@ static bool load_and_combine_hashes(hashl &kmer_hash, const std::vector<std::str
 		std::cerr << "size " << kmer_hash.size() << "\n";
 		close_compressed(fd);
 	}
+std::cout << "\n";
+kmer_hash.print();
+std::cout << "\n";
 	return 1;
 }
 
-int main(const int argc, char * const * argv) {
+static void cross_ref(const hashl &reference_kmers, const hashl &fastq_kmers) {
+	hashl::const_iterator a(fastq_kmers.begin());
+	const hashl::const_iterator end_a(fastq_kmers.end());
+	hashl::key_type key(fastq_kmers), comp_key(fastq_kmers);
+	std::string s;
+	for (; a != end_a; ++a) {
+		if (a.offset() != hashl::invalid_key && a.value() && a.value() != hashl::invalid_value) {
+			a.get_key(key);
+			// returns 0 if key not found
+			const hashl::small_value_type x(reference_kmers.value(key));
+			if (x && x != hashl::invalid_value && x <= opt_max_kmer_sharing) {
+				key.convert_to_string(s);
+				std::cout << s << ' ' << static_cast<unsigned int>(x) << "\n";
+				comp_key.make_complement(key);
+				if (key != comp_key) {
+					comp_key.convert_to_string(s);
+					std::cout << s << ' ' << static_cast<unsigned int>(x) << "\n";
+				}
+			}
+		}
+	}
+}
+
+int main(const int argc, char * const * const argv) {
 	get_opts(argc, argv);
 	hashl reference_kmers;
-	if (!load_and_combine_hashes(reference_kmers, opt_reference_list, opt_reference_min_kmer_frequency, opt_reference_max_kmer_frequency)) {
+	if (opt_hash_load != -1) {
+		reference_kmers.init_from_file(opt_hash_load);
+	} else if (!load_and_combine_hashes(reference_kmers, opt_reference_list, opt_reference_min_kmer_frequency, opt_reference_max_kmer_frequency)) {
 		return 1;
+	} else if (!opt_hash_save.empty()) {
+		save_hash(reference_kmers, opt_hash_save);
 	}
-	if (!opt_hash_save.empty()) {
-		save_memory(reference_kmers);
+	if (optind == argc) {	// just saving the created hash, presumably
+		return 0;
+	}
+	std::vector<std::string> fastq_files;
+	for (int i(optind); i < argc; ++i) {
+		fastq_files.push_back(argv[i]);
 	}
 	hashl fastq_kmers;
-	{	// scope to limit fastq_files
-		std::vector<std::string> fastq_files;
-		for (int i(optind); i < argc; ++i) {
-			fastq_files.push_back(argv[i]);
-		}
-		if (!load_and_combine_hashes(fastq_kmers, fastq_files, opt_reference_min_kmer_frequency, opt_reference_max_kmer_frequency)) {
-			return 1;
-		}
+	if (!load_and_combine_hashes(fastq_kmers, fastq_files, opt_fastq_min_kmer_frequency, opt_fastq_max_kmer_frequency)) {
+		return 1;
 	}
 	std::cerr << "processing kmers\n";
-	mer_list[0].print_kmer_matching(&mer_list[1], opt_reference_list.size());
+	cross_ref(reference_kmers, fastq_kmers);
+	return 0;
 }
