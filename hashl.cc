@@ -1,4 +1,5 @@
 #include "hashl.h"
+#include "hashl_metadata.h"	// hashl_metadata
 #include "itoa.h"	// itoa()
 #include "local_endian.h"	// big_endian
 #include "next_prime.h"	// next_prime()
@@ -281,6 +282,9 @@ void hashl::save(const int fd) const {
 }
 
 void hashl::resize(hash_offset_type size_asked) {
+	if (size_asked < used_elements) {
+		return;
+	}
 	const size_t old_modulus(modulus);
 	if (size_asked < 3) {	// to avoid collision_modulus == modulus
 		size_asked = 3;
@@ -333,13 +337,16 @@ void hashl::normalize(const small_value_type min_cutoff, const small_value_type 
 // values of >max_cutoff set to invalid_value
 
 bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_value_type max_cutoff) {
-	if (used_elements + a.used_elements > a.modulus) {
-		resize(used_elements + a.used_elements);
+	// total possible elements, actually, as there may be duplicates
+	const size_t total_elements(used_elements + a.used_elements);
+	if (total_elements > modulus * .7) {	// max load of 70%
+		resize(total_elements * 2);	// aim for 50% load
 	}
 	// copy over data (and make sure to update offsets when adding new entries)
 	const size_t offset(data.size() * sizeof(base_type) * 8);
 	// this pads out the existing data so we don't have to shift all the new data
 	// TODO: see if shifting would actually slow things down much
+	//       and change metadata to remove padding there, as well
 	data.reserve(data.size() + a.data.size());
 	data.insert(data.end(), a.data.begin(), a.data.end());
 	// loop over incoming hash and increment or invalidate entries as needed
@@ -349,15 +356,35 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 			key.copy_in(a.data, a.key_list[i]);
 			comp_key.make_complement(key);
 			const hash_offset_type new_i(insert_offset(key, comp_key, a.key_list[i] + offset));
-			if (new_i == modulus) {
+			if (new_i == modulus) {		// ran out of memory in hash (shouldn't happen)
 				return 0;
-			} else if (a.value_list[i] < min_cutoff) {
-			} else if (a.value_list[i] > max_cutoff) {
+			} else if (a.value_list[i] < min_cutoff) {	// ignore low values
+			} else if (a.value_list[i] > max_cutoff) {	// too high - invalid
 				value_list[new_i] = invalid_value;
 			} else if (value_list[new_i] < max_small_value) {
 				++value_list[new_i];
 			}
 		}
+	}
+	// combine metadata, if both hashes have it
+	if (!metadata.empty() && !a.metadata.empty()) {
+		// extract metadata from blobs (both ours and a's)
+		hashl_metadata our_md, a_md;
+		our_md.unpack(metadata);
+		const size_t padding(offset - our_md.sequence_length());
+		a_md.unpack(a.metadata);
+		our_md.add(a_md, padding);
+		our_md.pack(metadata);
+	} else if (!a.metadata.empty()) {	// put in what we can
+		hashl_metadata our_md, a_md;
+		// add dummy entry for current hash
+		our_md.add_file("unknown");
+		our_md.add_read("padding");
+		our_md.add_read_range(0, offset);
+		a_md.unpack(a.metadata);
+		our_md.add(a_md);
+		our_md.pack(metadata);
+	} else if (!a.metadata.empty()) {	// put in what we can
 	}
 	return 1;
 }

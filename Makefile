@@ -95,7 +95,7 @@ bin/dot_hash: obj/dot_hash.o obj/open_compressed.o obj/hash.o obj/next_prime.o o
 bin/dot_hashn: obj/dot_hashn.o obj/open_compressed.o obj/hashn.o obj/next_prime.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-bin/dot_hashl: obj/dot_hashl.o obj/open_compressed.o obj/hashl.o obj/next_prime.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o
+bin/dot_hashl: obj/dot_hashl.o obj/open_compressed.o obj/hashl.o obj/hashl_metadata.o obj/next_prime.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 bin/qc_stats1: obj/open_compressed.o obj/get_name.o obj/pattern.o obj/pretty_print.o obj/qc_read.o obj/qc_read_lib.o obj/qc_stats1.o obj/read.o obj/read_lib.o obj/breakup_line.o obj/strtostr.o
@@ -134,7 +134,7 @@ bin/mask_repeats_hashn: obj/breakup_line.o obj/get_name.o obj/hashn.o obj/hist_l
 bin/histogram_hashn: obj/get_name.o obj/hashn.o obj/hist_lib_hashn.o obj/histogram_hashn.o obj/next_prime.o obj/open_compressed.o obj/pattern.o obj/read.o obj/read_file.o obj/time_used.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-bin/histogram_hashl: obj/hashl.o obj/histogram_hashl.o obj/next_prime.o obj/open_compressed.o obj/time_used.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o
+bin/histogram_hashl: obj/hashl.o obj/hashl_metadata.o obj/histogram_hashl.o obj/next_prime.o obj/open_compressed.o obj/time_used.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 bin/check_barcodes: obj/check_barcodes.o obj/breakup_line.o obj/strtostr.o
