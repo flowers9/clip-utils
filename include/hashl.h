@@ -10,6 +10,7 @@
 #include <limits.h>	// UCHAR_MAX, ULONG_MAX
 #include <stdint.h>	// uint64_t
 #include <string>	// string
+#include <utility>	// pair<>
 #include <vector>	// vector<>
 
 class hashl {
@@ -99,7 +100,7 @@ class hashl {
 		hash_offset_type offset(void) const {
 			return offset_;
 		}
-		void value(const small_value_type i) {
+		void set_value(const small_value_type i) {
 			list.value_list[offset_] = i;
 		}
 		void get_key(key_type &key) const {
@@ -197,6 +198,7 @@ class hashl {
 	// will insert new key if missing
 	bool increment(const key_type &key, const key_type &comp_key, data_offset_type);
 	value_type value(const key_type &) const;
+	std::pair<data_offset_type, value_type> entry(const key_type &) const;
 	hash_offset_type size(void) const {
 		return used_elements;
 	}
@@ -216,6 +218,10 @@ class hashl {
 	const_iterator end(void) const {
 		return const_iterator(*this, modulus);
 	}
+	iterator begin(void);
+	iterator end(void) {
+		return iterator(*this, modulus);
+	}
 	const_iterator find(const key_type &key) const {
 		return const_iterator(*this, find_offset(key));
 	}
@@ -229,6 +235,7 @@ class hashl {
 	const std::vector<base_type> &get_data(void) const {
 		return data;
 	}
+	void get_sequence(data_offset_type start, data_offset_type length, std::string &) const;
 	void resize(hash_offset_type new_size);
 	// set values <= cutoff to 1, values > cutoff to invalid_value
 	void normalize(small_value_type min_cutoff = 0, small_value_type max_cutoff = 1);

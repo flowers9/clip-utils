@@ -12,6 +12,7 @@
 #include <stdlib.h>	// exit()
 #include <string.h>	// memcmp(), memcpy()
 #include <string>	// string
+#include <utility>	// make_pair(), pair<>
 #include <vector>	// vector<>
 
 // description beginning of saved file
@@ -249,11 +250,34 @@ hashl::value_type hashl::value(const key_type &key) const {
 	return i < modulus ? value_list[i] : 0;
 }
 
+// same as above, but also return the data offset
+
+std::pair<hashl::data_offset_type, hashl::value_type> hashl::entry(const key_type &key) const {
+	const hash_offset_type i(find_offset(key));
+	if (i < modulus) {
+		return std::make_pair(key_list[i], value_list[i]);
+	} else {
+		return std::make_pair(0, 0);
+	}
+}
+
 hashl::const_iterator hashl::begin() const {
 	if (used_elements == 0) {
 		return end();
 	}
 	const_iterator a(*this, 0);
+	// advance to first valid value
+	if (key_list[0] == invalid_key) {
+		++a;
+	}
+	return a;
+}
+
+hashl::iterator hashl::begin() {
+	if (used_elements == 0) {
+		return end();
+	}
+	iterator a(*this, 0);
 	// advance to first valid value
 	if (key_list[0] == invalid_key) {
 		++a;
@@ -409,5 +433,21 @@ void hashl::print() const {
 			k.convert_to_string(s);
 			std::cout << std::setw(max_width) << key_list[i] << ' ' << std::setw(3) << static_cast<unsigned int>(value_list[i]) << ' ' << s << "\n";
 		}
+	}
+}
+
+void hashl::get_sequence(const data_offset_type start, const data_offset_type length, std::string &seq) const {
+	const char values[4] = { 'A', 'C', 'G', 'T' };
+	seq.clear();
+	size_t word_offset(start / (sizeof(base_type) * 8));
+	size_t bit_offset(sizeof(base_type) * 8 - start % (sizeof(base_type) * 8));
+	for (data_offset_type i(0); i < length; i += 2) {
+		if (bit_offset) {
+			bit_offset -= 2;
+		} else {
+			bit_offset = sizeof(base_type) * 8 - 2;
+			++word_offset;
+		}
+		seq += values[(data[word_offset] >> bit_offset) & 3];
 	}
 }

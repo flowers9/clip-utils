@@ -2,12 +2,18 @@
 #define _HASHL_METADATA_H
 
 #include "hashl.h"	// hashl
+#include <map>		// map<>
 #include <stdint.h>	// uint64_t
 #include <string>	// string
 #include <utility>	// pair<>
 #include <vector>	// vector<>
 
 class hashl_metadata {
+    public:
+	struct position {		// for doing position lookups
+		size_t file, read;
+		uint64_t read_start;
+	};
     private:						// convenience variables for read_data()
 	std::vector<hashl::base_type> data;
 	size_t byte_offset;
@@ -33,6 +39,13 @@ class hashl_metadata {
 	size_t sequence_length(void) const;
 	std::vector<size_t> read_ends(void) const;
 	void add(hashl_metadata &, size_t padding = 0);
+	void create_lookup_map(std::map<size_t, position> &) const;
+	const std::string &file(const size_t i) const {
+		return files[i];
+	}
+	const std::string &read(const size_t i, const size_t j) const {
+		return reads[i][j];
+	}
     private:
 	void read_file(size_t);
 	void get_subreads(const std::string &, const std::vector<std::pair<uint64_t, uint64_t> > &);

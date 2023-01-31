@@ -2,6 +2,7 @@
 #include "hashl_metadata.h"
 #include "open_compressed.h"	// close_compressed(), open_compressed(), pfgets()
 #include <iostream>	// cerr, cout
+#include <map>		// map<>
 #include <stdint.h>	// uint64_t
 #include <stdlib.h>	// exit()
 #include <string.h>	// memcpy()
@@ -298,6 +299,24 @@ void hashl_metadata::print() const {
 			std::cout << "\t" << reads[i][j].c_str() << "\n";
 			for (size_t k(0); k < read_ranges[i][j].size(); ++k) {
 				std::cout << "\t\t" << read_ranges[i][j][k].first << ' ' << read_ranges[i][j][k].second << "\n";
+			}
+		}
+	}
+}
+
+// create a map allowing translation of a data position to a file/read/read_start triplet
+void hashl_metadata::create_lookup_map(std::map<size_t, hashl_metadata::position> &lookup) const {
+	lookup.clear();
+	uint64_t offset(0);
+	position x;
+	for (x.file = 0; x.file < read_ranges.size(); ++x.file) {
+		const std::vector<std::vector<std::pair<uint64_t, uint64_t> > > &read_list(read_ranges[x.file]);
+		for (x.read = 0; x.read < read_list.size(); ++x.read) {
+			const std::vector<std::pair<uint64_t, uint64_t> > &range_list(read_list[x.read]);
+			for (size_t k(0); k < range_list.size(); ++k) {
+				x.read_start = range_list[k].first;
+				lookup[offset] = x;
+				offset += range_list[k].second - range_list[k].first;
 			}
 		}
 	}

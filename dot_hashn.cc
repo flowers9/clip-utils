@@ -542,8 +542,8 @@ int main(const int argc, char * const * argv) {
 			return 1;
 		}
 		mer_list[i].init_from_file2(fd, 1);
-		std::cerr << "size " << mer_list[i].size() << "\n";
 		close_compressed(fd);
+		std::cerr << "size " << mer_list[i].size() << "\n";
 	}
 	// load in reference saved hashes
 	std::vector<std::string>::const_iterator a(opt_reference_list.begin());
@@ -556,8 +556,8 @@ int main(const int argc, char * const * argv) {
 			return 1;
 		}
 		mer_list[i].init_from_file2(fd, 0);
-		std::cerr << "size " << mer_list[i].size() << "\n";
 		close_compressed(fd);
+		std::cerr << "size " << mer_list[i].size() << "\n";
 	}
 	if (opt_reference_list.size() > 1 && opt_max_kmer_sharing != 0) { // && static_cast<size_t>(opt_max_kmer_sharing) < opt_reference_list.size()) {
 		uint64_t x(0);

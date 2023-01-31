@@ -1,5 +1,4 @@
 #include "hashl.h"	// hashl
-#include "next_prime.h"	// next_prime()
 #include "open_compressed.h"	// close_compressed(), get_suffix(), open_compressed()
 #include "version.h"	// VERSION
 #include "write_fork.h"	// close_fork(), write_fork()
@@ -23,6 +22,7 @@ static int opt_reference_max_kmer_frequency;
 static int opt_reference_min_kmer_frequency;
 static size_t opt_nmers;
 static std::string opt_hash_save;
+static std::string opt_results_save;
 static std::vector<std::string> opt_reference_list;
 
 // return the number represented by s, which may be suffixed by a k, m, or g
@@ -54,12 +54,14 @@ static size_t get_value(const std::string s) {
 }
 
 static void print_usage() {
-	std::cerr << "usage: dot_hash saved_hash1 saved_hash2 ...\n"
+	std::cerr << "usage: dot_hashl saved_hash1 saved_hash2 ...\n"
 		"    -h    print this help\n"
 		"    -f ## fastq min kmer frequency\n"
 		"    -F ## fastq max kmer frequency\n"
 		"    -m ## reference min kmer frequency\n"
 		"    -M ## reference max kmer frequency [1]\n"
+		"    -o ## save results to a hash dump for later processing\n"
+		"    -r ## add reference file (may be specified multiple times)\n"
 		"    -r ## add reference file (may be specified multiple times)\n"
 		"    -s ## save resulting combined reference hash\n"
 		"    -S ## load histogram memory dump from given file\n"
@@ -80,7 +82,7 @@ static void get_opts(const int argc, char * const * const argv) {
 	opt_reference_max_kmer_frequency = 1;
 	opt_reference_min_kmer_frequency = 0;
 	int c;
-	while ((c = getopt(argc, argv, "hf:F:m:M:r:s:S:u:Vz:")) != EOF) {
+	while ((c = getopt(argc, argv, "hf:F:m:M:o:r:s:S:u:Vz:")) != EOF) {
 		switch (c) {
 		    case 'h':
 			print_usage();
@@ -96,6 +98,9 @@ static void get_opts(const int argc, char * const * const argv) {
 			break;
 		    case 'M':
 			std::istringstream(optarg) >> opt_reference_max_kmer_frequency;
+			break;
+		    case 'o':
+			opt_results_save = optarg;
 			break;
 		    case 'r':
 			opt_reference_list.push_back(optarg);
@@ -114,7 +119,7 @@ static void get_opts(const int argc, char * const * const argv) {
 			std::istringstream(optarg) >> opt_max_kmer_sharing;
 			break;
 		    case 'V':
-			std::cerr << "dot_hash version " << VERSION << "\n";
+			std::cerr << "dot_hashl version " << VERSION << "\n";
 			exit(0);
 		    case 'z':
 			opt_nmers = get_value(optarg);
@@ -169,7 +174,7 @@ static void save_hash(const hashl &mer_list, const std::string &filename) {
 	close_fork(fd);
 }
 
-static bool load_and_combine_hashes(hashl &kmer_hash, const std::vector<std::string> &files, const int min_cutoff, const int max_cutoff) {
+static bool load_and_combine_hashes(hashl &kmer_hash, const std::vector<std::string> &files, const int min_cutoff, const int max_cutoff, const size_t starting_hash_size = 0) {
 	// load in reference saved hashes
 	std::vector<std::string>::const_iterator a(files.begin());
 	const std::vector<std::string>::const_iterator end_a(files.end());
@@ -181,11 +186,12 @@ static bool load_and_combine_hashes(hashl &kmer_hash, const std::vector<std::str
 		return 0;
 	}
 	kmer_hash.init_from_file(fd);
+	close_compressed(fd);
 	kmer_hash.normalize(min_cutoff, max_cutoff);
 	std::cerr << time(0) << ": size " << kmer_hash.size() << ' ' << double(100) * kmer_hash.size() / kmer_hash.capacity() << "% " << kmer_hash.capacity() << "\n";
-	if (opt_nmers) {
+	if (starting_hash_size) {
 		std::cerr << "resizing\n";
-		kmer_hash.resize(opt_nmers);
+		kmer_hash.resize(starting_hash_size);
 		std::cerr << time(0) << ": size " << kmer_hash.size() << ' ' << double(100) * kmer_hash.size() / kmer_hash.capacity() << "% " << kmer_hash.capacity() << "\n";
 	}
 	hashl tmp_hash;			// declare outside loop so memory can get reused
@@ -197,6 +203,7 @@ static bool load_and_combine_hashes(hashl &kmer_hash, const std::vector<std::str
 			return 0;
 		}
 		tmp_hash.init_from_file(fd);
+		close_compressed(fd);
 		if (!kmer_hash.add(tmp_hash, min_cutoff, max_cutoff)) {
 			std::cerr << "Error: failed to add hash\n";
 			return 0;
@@ -207,15 +214,15 @@ static bool load_and_combine_hashes(hashl &kmer_hash, const std::vector<std::str
 	return 1;
 }
 
-static void cross_ref(const hashl &reference_kmers, const hashl &fastq_kmers) {
+static void cross_ref_stdout(const hashl &reference_kmers, const hashl &fastq_kmers) {
 	hashl::const_iterator a(fastq_kmers.begin());
 	const hashl::const_iterator end_a(fastq_kmers.end());
 	hashl::key_type key(fastq_kmers), comp_key(fastq_kmers);
 	std::string s;
 	for (; a != end_a; ++a) {
-		if (a.offset() != hashl::invalid_key && a.value() && a.value() != hashl::invalid_value) {
+		if (a.value() && a.value() != hashl::invalid_value) {
 			a.get_key(key);
-			// returns 0 if key not found
+			// .value() returns 0 if key not found
 			const hashl::small_value_type x(reference_kmers.value(key));
 			if (x && x != hashl::invalid_value && x <= opt_max_kmer_sharing) {
 				key.convert_to_string(s);
@@ -230,18 +237,36 @@ static void cross_ref(const hashl &reference_kmers, const hashl &fastq_kmers) {
 	}
 }
 
+static void cross_ref_save(const hashl &reference_kmers, hashl &fastq_kmers) {
+	hashl::iterator a(fastq_kmers.begin());
+	const hashl::iterator end_a(fastq_kmers.end());
+	hashl::key_type key(fastq_kmers);
+	for (; a != end_a; ++a) {
+		if (a.value() && a.value() != hashl::invalid_value) {
+			a.get_key(key);
+			// .value() returns 0 if key not found
+			const hashl::small_value_type x(reference_kmers.value(key));
+			if (!x || x == hashl::invalid_value || x > opt_max_kmer_sharing) {
+				a.set_value(hashl::invalid_value);
+			}
+		}
+	}
+	save_hash(fastq_kmers, opt_results_save);
+}
+
 int main(const int argc, char * const * const argv) {
 	std::cerr << std::fixed << std::setprecision(2);
 	get_opts(argc, argv);
 	hashl reference_kmers;
 	if (opt_hash_load != -1) {
 		reference_kmers.init_from_file(opt_hash_load);
-	} else if (!load_and_combine_hashes(reference_kmers, opt_reference_list, opt_reference_min_kmer_frequency, opt_reference_max_kmer_frequency)) {
+		close_compressed(opt_hash_load);
+	} else if (!load_and_combine_hashes(reference_kmers, opt_reference_list, opt_reference_min_kmer_frequency, opt_reference_max_kmer_frequency, opt_nmers)) {
 		return 1;
 	} else {
 		if (reference_kmers.size() * 2 > reference_kmers.capacity() || !opt_hash_save.empty()) {
-			// resize to 50% load to optimize speed of lookups
-			// or to reduce size of save file
+			// reduce load to 50% load to optimize speed of lookups
+			// or increase to 50% to reduce size of save file
 			std::cerr << "setting hash to 50% load\n";
 			reference_kmers.resize(2 * reference_kmers.size());
 			std::cerr << time(0) << ": size " << reference_kmers.size() << ' ' << double(100) * reference_kmers.size() / reference_kmers.capacity() << "% " << reference_kmers.capacity() << "\n";
@@ -253,15 +278,19 @@ int main(const int argc, char * const * const argv) {
 	if (optind == argc) {	// just saving the created hash, presumably
 		return 0;
 	}
-	std::vector<std::string> fastq_files;
+	std::vector<std::string> target_hashes;
 	for (int i(optind); i < argc; ++i) {
-		fastq_files.push_back(argv[i]);
+		target_hashes.push_back(argv[i]);
 	}
 	hashl fastq_kmers;
-	if (!load_and_combine_hashes(fastq_kmers, fastq_files, opt_fastq_min_kmer_frequency, opt_fastq_max_kmer_frequency)) {
+	if (!load_and_combine_hashes(fastq_kmers, target_hashes, opt_fastq_min_kmer_frequency, opt_fastq_max_kmer_frequency)) {
 		return 1;
 	}
 	std::cerr << "processing kmers\n";
-	cross_ref(reference_kmers, fastq_kmers);
+	if (opt_results_save.empty()) {
+		cross_ref_stdout(reference_kmers, fastq_kmers);
+	} else {
+		cross_ref_save(reference_kmers, fastq_kmers);
+	}
 	return 0;
 }

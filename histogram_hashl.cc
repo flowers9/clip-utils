@@ -478,6 +478,7 @@ int main(int argc, char **argv) {
 			std::cerr << time(0) << ": Initializing n-mer hash\n";
 		}
 		mer_list.init_from_file(opt_histogram_restore);
+		close_compressed(opt_histogram_restore);
 		if (opt_feedback) {
 			print_final_input_feedback(mer_list);
 		}

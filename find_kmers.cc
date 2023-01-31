@@ -26,7 +26,7 @@
 // that contain the entire locus sequence
 
 // parent file format: id1 id2 sequence
-// read file must be in fastq format, no extraneous returns
+// read file must be in fastq format
 // output format: sequence loci_list read_id_list
 //
 // single parent locus output format is id1_id2; multi-parent locus output
