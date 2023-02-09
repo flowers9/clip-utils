@@ -134,6 +134,7 @@ class hashl {
 		hash_offset_type offset_;
 	    public:
 		explicit const_iterator(const hashl &a, const hash_offset_type i) : list(a), offset_(i) { }
+		const_iterator(const const_iterator &a) : list(a.list), offset_(a.offset_) { }
 		~const_iterator(void) { }
 		// value()/key() undefined if called when pointing to end()
 		small_value_type value(void) const {
@@ -214,8 +215,8 @@ class hashl {
 	size_t words(void) const {
 		return word_width;
 	}
-	const_iterator begin(void) const;
-	const_iterator end(void) const {
+	const_iterator cbegin(void) const;
+	const_iterator cend(void) const {
 		return const_iterator(*this, modulus);
 	}
 	iterator begin(void);

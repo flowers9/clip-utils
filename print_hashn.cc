@@ -5,7 +5,7 @@
 
 int main(int argc, char **argv) {
 	if (argc != 2) {
-		fprintf(stderr, "usage: print_array <array_file>\n");
+		fprintf(stderr, "usage: print_hashn <hashn_file>\n");
 		return 1;
 	}
 	const int fd(open_compressed(argv[1]));

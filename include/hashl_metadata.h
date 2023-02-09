@@ -40,6 +40,12 @@ class hashl_metadata {
 	std::vector<size_t> read_ends(void) const;
 	void add(hashl_metadata &, size_t padding = 0);
 	void create_lookup_map(std::map<size_t, position> &) const;
+	size_t file_count(void) const {
+		return files.size();
+	}
+	size_t read_count(const size_t i) const {
+		return reads[i].size();
+	}
 	const std::string &file(const size_t i) const {
 		return files[i];
 	}

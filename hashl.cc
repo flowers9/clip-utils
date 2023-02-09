@@ -261,9 +261,9 @@ std::pair<hashl::data_offset_type, hashl::value_type> hashl::entry(const key_typ
 	}
 }
 
-hashl::const_iterator hashl::begin() const {
+hashl::const_iterator hashl::cbegin() const {
 	if (used_elements == 0) {
-		return end();
+		return cend();
 	}
 	const_iterator a(*this, 0);
 	// advance to first valid value
