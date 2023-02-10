@@ -252,16 +252,26 @@ int main(const int argc, char * const * const argv) {
 	if (opt_hash_load != -1) {
 		reference_kmers.init_from_file(opt_hash_load);
 		close_compressed(opt_hash_load);
+		hashl_metadata md;
+		md.unpack(reference_kmers.get_metadata());
 		if (opt_max_kmer_sharing < 0) {
-			hashl_metadata md;
-			md.unpack(reference_kmers.get_metadata());
 			opt_max_kmer_sharing += md.file_count();
+		}
+		if (opt_max_kmer_sharing < 1) {
+			opt_max_kmer_sharing = 1;
+		} else if (static_cast<unsigned int>(opt_max_kmer_sharing) > md.file_count()) {
+			opt_max_kmer_sharing = md.file_count();
 		}
 	} else if (!load_and_combine_hashes(reference_kmers, opt_reference_list, opt_reference_min_kmer_frequency, opt_reference_max_kmer_frequency, opt_nmers)) {
 		return 1;
 	} else {
 		if (opt_max_kmer_sharing < 0) {
 			opt_max_kmer_sharing += opt_reference_list.size();
+		}
+		if (opt_max_kmer_sharing < 1) {
+			opt_max_kmer_sharing = 1;
+		} else if (static_cast<unsigned int>(opt_max_kmer_sharing) > opt_reference_list.size()) {
+			opt_max_kmer_sharing = opt_reference_list.size();
 		}
 		if (reference_kmers.size() * 2 > reference_kmers.capacity() || !opt_hash_save.empty()) {
 			// reduce load to 50% load to optimize speed of lookups
