@@ -13,7 +13,8 @@
 #include <vector>	// vector<>
 
 // combine a set of reference hashes (and save this, if asked) and then
-// go through a target's hash seeing which kmers match
+// go through a target's hash seeing which kmers match; multiple targets
+// are treated as one big target
 
 static int opt_fastq_max_kmer_frequency;
 static int opt_fastq_min_kmer_frequency;
@@ -45,11 +46,11 @@ static size_t get_value(const std::string s) {
 		    case 'k':
 			return x << 10;
 		    default:			// invalid multiplier
-			std::cerr << "Error: invalid unit suffix: " << s[i] << "\n";
+			std::cerr << "Error: invalid unit suffix: " << s[i] << '\n';
 			exit(1);
 		}
 	} else {				// bad value
-		std::cerr << "Error: invalid number: " << s << "\n";
+		std::cerr << "Error: invalid number: " << s << '\n';
 		exit(1);
 	}
 }
@@ -62,7 +63,6 @@ static void print_usage() {
 		"    -m ## reference min kmer frequency\n"
 		"    -M ## reference max kmer frequency [1]\n"
 		"    -o ## save results to a hash dump for later processing\n"
-		"    -r ## add reference file (may be specified multiple times)\n"
 		"    -r ## add reference file (may be specified multiple times)\n"
 		"    -s ## save resulting combined reference hash\n"
 		"    -S ## load histogram memory dump from given file\n"
@@ -120,13 +120,13 @@ static void get_opts(const int argc, char * const * const argv) {
 			std::istringstream(optarg) >> opt_max_kmer_sharing;
 			break;
 		    case 'V':
-			std::cerr << "dot_hashl version " << VERSION << "\n";
+			std::cerr << "dot_hashl version " << VERSION << '\n';
 			exit(0);
 		    case 'z':
 			opt_nmers = get_value(optarg);
 			break;
 		    default:
-			std::cerr << "Error: unknown option " << char(c) << "\n";
+			std::cerr << "Error: unknown option " << char(c) << '\n';
 			print_usage();
 		}
 	}
@@ -158,7 +158,7 @@ static void save_hash(const hashl &mer_list, const std::string &filename) {
 	}
 	const int fd(write_fork(args, filename));
 	if (fd == -1) {
-		std::cerr << "Error: could not save hash " << filename << "\n";
+		std::cerr << "Error: could not save hash " << filename << '\n';
 		exit(1);
 	}
 	mer_list.save(fd);
@@ -169,28 +169,28 @@ static bool load_and_combine_hashes(hashl &kmer_hash, const std::vector<std::str
 	// load in reference saved hashes
 	std::vector<std::string>::const_iterator a(files.begin());
 	const std::vector<std::string>::const_iterator end_a(files.end());
-	std::cerr << time(0) << "\n";
-	std::cerr << "reading " << *a << "\n";
+	std::cerr << time(0) << '\n';
+	std::cerr << "reading " << *a << '\n';
 	int fd(open_compressed(*a));
 	if (fd == -1) {
-		std::cerr << "Error: could not read saved hash: " << *a << "\n";
+		std::cerr << "Error: could not read saved hash: " << *a << '\n';
 		return 0;
 	}
 	kmer_hash.init_from_file(fd);
 	close_compressed(fd);
 	kmer_hash.normalize(min_cutoff, max_cutoff);
-	std::cerr << time(0) << ": size " << kmer_hash.size() << ' ' << double(100) * kmer_hash.size() / kmer_hash.capacity() << "% " << kmer_hash.capacity() << "\n";
+	std::cerr << time(0) << ": size " << kmer_hash.size() << ' ' << double(100) * kmer_hash.size() / kmer_hash.capacity() << "% " << kmer_hash.capacity() << '\n';
 	if (starting_hash_size) {
 		std::cerr << "resizing\n";
 		kmer_hash.resize(starting_hash_size);
-		std::cerr << time(0) << ": size " << kmer_hash.size() << ' ' << double(100) * kmer_hash.size() / kmer_hash.capacity() << "% " << kmer_hash.capacity() << "\n";
+		std::cerr << time(0) << ": size " << kmer_hash.size() << ' ' << double(100) * kmer_hash.size() / kmer_hash.capacity() << "% " << kmer_hash.capacity() << '\n';
 	}
 	hashl tmp_hash;			// declare outside loop so memory can get reused
 	for (++a; a != end_a; ++a) {
-		std::cerr << "reading " << *a << "\n";
+		std::cerr << "reading " << *a << '\n';
 		fd = open_compressed(*a);
 		if (fd == -1) {
-			std::cerr << "Error: could not read saved hash: " << *a << "\n";
+			std::cerr << "Error: could not read saved hash: " << *a << '\n';
 			return 0;
 		}
 		tmp_hash.init_from_file(fd);
@@ -199,7 +199,7 @@ static bool load_and_combine_hashes(hashl &kmer_hash, const std::vector<std::str
 			std::cerr << "Error: failed to add hash\n";
 			return 0;
 		}
-		std::cerr << time(0) << ": size " << kmer_hash.size() << ' ' << double(100) * kmer_hash.size() / kmer_hash.capacity() << "% " << kmer_hash.capacity() << "\n";
+		std::cerr << time(0) << ": size " << kmer_hash.size() << ' ' << double(100) * kmer_hash.size() / kmer_hash.capacity() << "% " << kmer_hash.capacity() << '\n';
 		close_compressed(fd);
 	}
 	return 1;
@@ -215,13 +215,13 @@ static void cross_ref_stdout(const hashl &reference_kmers, const hashl &fastq_km
 			a.get_key(key);
 			// .value() returns 0 if key not found
 			const hashl::small_value_type x(reference_kmers.value(key));
-			if (x && x != hashl::invalid_value && x <= opt_max_kmer_sharing) {
+			if (x && x != hashl::invalid_value && x <= static_cast<unsigned int>(opt_max_kmer_sharing)) {
 				key.convert_to_string(s);
-				std::cout << s << ' ' << static_cast<unsigned int>(x) << "\n";
+				std::cout << s << ' ' << static_cast<unsigned int>(x) << '\n';
 				comp_key.make_complement(key);
 				if (key != comp_key) {
 					comp_key.convert_to_string(s);
-					std::cout << s << ' ' << static_cast<unsigned int>(x) << ' ' << static_cast<unsigned int>(a.value()) << "\n";
+					std::cout << s << ' ' << static_cast<unsigned int>(x) << ' ' << '\n';
 				}
 			}
 		}
@@ -237,7 +237,7 @@ static void cross_ref_save(const hashl &reference_kmers, hashl &fastq_kmers) {
 			a.get_key(key);
 			// .value() returns 0 if key not found
 			const hashl::small_value_type x(reference_kmers.value(key));
-			if (!x || x == hashl::invalid_value || x > opt_max_kmer_sharing) {
+			if (!x || x == hashl::invalid_value || x > static_cast<unsigned int>(opt_max_kmer_sharing)) {
 				a.set_value(hashl::invalid_value);
 			}
 		}
@@ -268,7 +268,7 @@ int main(const int argc, char * const * const argv) {
 			// or increase to 50% to reduce size of save file
 			std::cerr << "setting hash to 50% load\n";
 			reference_kmers.resize(2 * reference_kmers.size());
-			std::cerr << time(0) << ": size " << reference_kmers.size() << ' ' << double(100) * reference_kmers.size() / reference_kmers.capacity() << "% " << reference_kmers.capacity() << "\n";
+			std::cerr << time(0) << ": size " << reference_kmers.size() << ' ' << double(100) * reference_kmers.size() / reference_kmers.capacity() << "% " << reference_kmers.capacity() << '\n';
 		}
 		if (!opt_hash_save.empty()) {
 			save_hash(reference_kmers, opt_hash_save);

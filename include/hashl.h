@@ -12,6 +12,7 @@
 #include <string>	// string
 #include <utility>	// pair<>
 #include <vector>	// vector<>
+#include <iostream>
 
 class hashl {
     public:	// type declarations
@@ -91,7 +92,16 @@ class hashl {
 		hashl &list;
 		hash_offset_type offset_;
 	    public:
-		explicit iterator(hashl &a, const hash_offset_type i) : list(a), offset_(i) { }
+		explicit iterator(hashl &a, const hash_offset_type i) : list(a), offset_(i) {
+			if (i >= list.modulus || list.empty()) {
+				offset_ = list.modulus;
+			} else {
+				offset_ = i;
+				if (list.key_list[offset_] == invalid_key) {
+					increment();
+				}
+			}
+		}
 		~iterator(void) { }
 		// value()/key() undefined if called when pointing to end()
 		small_value_type value(void) const {
@@ -133,7 +143,16 @@ class hashl {
 		const hashl &list;
 		hash_offset_type offset_;
 	    public:
-		explicit const_iterator(const hashl &a, const hash_offset_type i) : list(a), offset_(i) { }
+		explicit const_iterator(const hashl &a, const hash_offset_type i) : list(a) {
+			if (i >= list.modulus || list.empty()) {
+				offset_ = list.modulus;
+			} else {
+				offset_ = i;
+				if (list.key_list[offset_] == invalid_key) {
+					increment();
+				}
+			}
+		}
 		const_iterator(const const_iterator &a) : list(a.list), offset_(a.offset_) { }
 		~const_iterator(void) { }
 		// value()/key() undefined if called when pointing to end()
@@ -215,11 +234,15 @@ class hashl {
 	size_t words(void) const {
 		return word_width;
 	}
-	const_iterator cbegin(void) const;
+	const_iterator cbegin(void) const {
+		return const_iterator(*this, 0);
+	}
 	const_iterator cend(void) const {
 		return const_iterator(*this, modulus);
 	}
-	iterator begin(void);
+	iterator begin(void) {
+		return iterator(*this, 0);
+	}
 	iterator end(void) {
 		return iterator(*this, modulus);
 	}
@@ -236,6 +259,7 @@ class hashl {
 	const std::vector<base_type> &get_data(void) const {
 		return data;
 	}
+	// start and length are in bits, not basepairs
 	void get_sequence(data_offset_type start, data_offset_type length, std::string &) const;
 	void resize(hash_offset_type new_size);
 	// set values <= cutoff to 1, values > cutoff to invalid_value

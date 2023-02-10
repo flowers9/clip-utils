@@ -261,30 +261,6 @@ std::pair<hashl::data_offset_type, hashl::value_type> hashl::entry(const key_typ
 	}
 }
 
-hashl::const_iterator hashl::cbegin() const {
-	if (used_elements == 0) {
-		return cend();
-	}
-	const_iterator a(*this, 0);
-	// advance to first valid value
-	if (key_list[0] == invalid_key) {
-		++a;
-	}
-	return a;
-}
-
-hashl::iterator hashl::begin() {
-	if (used_elements == 0) {
-		return end();
-	}
-	iterator a(*this, 0);
-	// advance to first valid value
-	if (key_list[0] == invalid_key) {
-		++a;
-	}
-	return a;
-}
-
 void hashl::save(const int fd) const {
 	const std::string s(boilerplate());
 	pfwrite(fd, s.c_str(), s.size());
@@ -347,7 +323,8 @@ void hashl::resize(hash_offset_type size_asked) {
 
 void hashl::normalize(const small_value_type min_cutoff, const small_value_type max_cutoff) {
 	for (hash_offset_type i(0); i < modulus; ++i) {
-		if (value_list[i] < min_cutoff) {
+		if (key_list[i] == invalid_key) {
+		} else if (value_list[i] < min_cutoff) {
 			value_list[i] = 0;
 		} else if (value_list[i] > max_cutoff) {
 			value_list[i] = invalid_value;
@@ -408,7 +385,6 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 		a_md.unpack(a.metadata);
 		our_md.add(a_md);
 		our_md.pack(metadata);
-	} else if (!a.metadata.empty()) {	// put in what we can
 	}
 	return 1;
 }

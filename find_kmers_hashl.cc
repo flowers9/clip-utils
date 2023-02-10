@@ -13,12 +13,14 @@
 #include <vector>	// vector<>
 
 // given a set of reference hashes and a hash of kmers to search for,
-// create a file of the matched ranges
+// create a file of the matched ranges (exclusive end)
 
+static bool opt_fasta_format;
 static std::string opt_reference_files;
 
 static void print_usage() {
 	std::cerr << "usage: find_kmers_hashl <kmer_list_hash> <reference_hash1> [reference_hash2 [...] ]\n"
+		"    -f    fasta format output\n"
 		"    -h    print this help\n"
 		"    -o ## output file for base reference file names [stderr]\n"
 		"    -V    print version\n";
@@ -26,9 +28,13 @@ static void print_usage() {
 }
 
 static void get_opts(const int argc, char * const * const argv) {
+	opt_fasta_format = 0;
 	int c;
-	while ((c = getopt(argc, argv, "ho:V")) != EOF) {
+	while ((c = getopt(argc, argv, "fho:V")) != EOF) {
 		switch (c) {
+		    case 'f':
+			opt_fasta_format = 1;
+			break;
 		    case 'h':
 			print_usage();
 			break;
@@ -48,58 +54,72 @@ static void get_opts(const int argc, char * const * const argv) {
 	}
 }
 
+struct hit_info {
+	uint64_t end;			// the map key is the start position
+	hashl::data_offset_type offset;	// to pull out sequence later
+};
+
 // add range, either as itself or extending an existing one
 // (possibly merging two)
 
-static void add_range(const std::map<hashl::data_offset_type, hashl_metadata::position> &lookup_map, const std::pair<hashl::data_offset_type, hashl::small_value_type> &x, std::vector<std::vector<std::map<uint64_t, uint64_t> > > &hits) {
+static void add_range(const std::map<hashl::data_offset_type, hashl_metadata::position> &lookup_map, const hashl::data_offset_type x, std::vector<std::vector<std::map<uint64_t, hit_info> > > &hits) {
 	// convert data offset into file/read/read_start
 	// (sadly, lower_bound() doesn't return <= position, but >=)
-	std::map<hashl::data_offset_type, hashl_metadata::position>::const_iterator pos(lookup_map.upper_bound(x.first));
+	// (divide x by 2 to convert to basepair position)
+	std::map<hashl::data_offset_type, hashl_metadata::position>::const_iterator pos(lookup_map.upper_bound(x / 2));
 	--pos;
 	// add range, or extend overlapping one
-	std::map<uint64_t, uint64_t> &ranges(hits[pos->second.file][pos->second.read]);
-	const uint64_t start(pos->second.read_start + x.first - pos->first);
+	std::map<uint64_t, hit_info> &ranges(hits[pos->second.file][pos->second.read]);
+	const uint64_t start(pos->second.read_start + x / 2 - pos->first);
 	// see if we should extend an existing range
 	if (!ranges.empty()) {
-		std::map<uint64_t, uint64_t>::iterator a(ranges.upper_bound(start));
+		std::map<uint64_t, hit_info>::iterator a(ranges.upper_bound(start));
 		// see if we follow an existing range
 		if (a != ranges.begin()) {
-			std::map<uint64_t, uint64_t>::iterator b(a);
+			std::map<uint64_t, hit_info>::iterator b(a);
 			--b;
-			if (b->second + 1 == start) {
+			if (b->second.end + 1 == start) {
 				// merge with following entry?
 				if (a != ranges.end() && start + 1 == a->first) {
-					b->second = a->second;
+					b->second.end = a->second.end;
 					ranges.erase(a);
 				} else {
-					b->second = start;
+					b->second.end = start;
 				}
 				return;
 			}
 		}
 		// see if existing range follows us
 		if (a != ranges.end() && start + 1 == a->first) {
-			ranges[start] = a->second;
+			ranges[start] = {a->second.end, x};
 			ranges.erase(a);
 			return;
 		}
 	}
-	ranges[start] = start;
+	ranges[start] = {start, x};
 }
 
 // output format is F#/read_name/start_end
 // (F# is 0-offset, end is exclusive)
 
-static void print_hits(const std::vector<std::vector<std::map<uint64_t, uint64_t> > > &hits, const hashl_metadata &md, std::vector<std::string> &file_list) {
+static void print_hits(const std::vector<std::vector<std::map<uint64_t, hit_info> > > &hits, const hashl_metadata &md, std::vector<std::string> &file_list, const hashl &reference) {
+	const size_t mer_length(reference.bits() / 2);
 	const size_t file_offset(file_list.size());
+	std::string s;
 	for (size_t i(0); i < hits.size(); ++i) {
 		file_list.push_back(md.file(i));
-		const std::vector<std::map<uint64_t, uint64_t> > &reads(hits[i]);
+		const std::vector<std::map<uint64_t, hit_info> > &reads(hits[i]);
 		for (size_t j(0); j < reads.size(); ++j) {
-			std::map<uint64_t, uint64_t>::const_iterator a(reads[j].begin());
-			const std::map<uint64_t, uint64_t>::const_iterator end_a(reads[j].end());
+			std::map<uint64_t, hit_info>::const_iterator a(reads[j].begin());
+			const std::map<uint64_t, hit_info>::const_iterator end_a(reads[j].end());
 			for (; a != end_a; ++a) {
-				std::cout << 'F' << file_offset + i << '/' << md.read(i, j) << '/' << a->first << '_' << a->second << '\n';
+				if (opt_fasta_format) {
+					std::cout << ">F" << file_offset + i << '/' << md.read(i, j) << '/' << a->first << '_' << a->second.end + mer_length << '\n';
+					reference.get_sequence(a->second.offset, (a->second.end + mer_length - a->first) * 2, s);
+					std::cout << s << '\n';
+				} else {
+					std::cout << 'F' << file_offset + i << '/' << md.read(i, j) << '/' << a->first << '_' << a->second.end + mer_length << '\n';
+				}
 			}
 		}
 	}
@@ -117,9 +137,9 @@ static void check_reference(const hashl &lookup, const hashl &reference, std::ve
 	std::map<hashl::data_offset_type, hashl_metadata::position> lookup_map;
 	md.create_lookup_map(lookup_map);
 	// [file][read][range_start] = (range_end, if kmer is non-unique)
-	std::vector<std::vector<std::map<uint64_t, uint64_t> > > hits(md.file_count());
+	std::vector<std::vector<std::map<uint64_t, hit_info> > > hits(md.file_count());
 	for (size_t i(0); i < hits.size(); ++i) {
-		hits[i].assign(md.read_count(i), std::map<uint64_t, uint64_t>());
+		hits[i].assign(md.read_count(i), std::map<uint64_t, hit_info>());
 	}
 	hashl::const_iterator a(lookup.cbegin());
 	const hashl::const_iterator end_a(lookup.cend());
@@ -130,11 +150,11 @@ static void check_reference(const hashl &lookup, const hashl &reference, std::ve
 			// .value() returns 0 if key not found
 			const std::pair<hashl::data_offset_type, hashl::small_value_type> x(reference.entry(key));
 			if (x.second) {
-				add_range(lookup_map, x, hits);
+				add_range(lookup_map, x.first, hits);
 			}
 		}
 	}
-	print_hits(hits, md, file_list);
+	print_hits(hits, md, file_list, reference);
 }
 
 static void print_reference_file_list(const std::vector<std::string> &files) {

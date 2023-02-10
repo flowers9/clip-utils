@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
 	for (; a != end_a; ++a) {
 		a.get_key(key);
 		key.convert_to_string(s);
-		std::cout << s << ' ' << a.value() << '\n';
+		std::cout << s << ' ' << static_cast<unsigned int>(a.value()) << '\n';
 	}
 	return 0;
 }
