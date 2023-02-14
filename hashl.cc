@@ -297,7 +297,7 @@ void hashl::resize(hash_offset_type size_asked) {
 	// collision_modulus just needs to be relatively prime with modulus;
 	// since modulus is prime, any value will do - I made it prime for fun
 	collision_modulus = next_prime(size_asked / 2);
-	// initialize keys and values
+	// initialize keys and values (and save old ones)
 	std::vector<data_offset_type> old_key_list(modulus, invalid_key);
 	key_list.swap(old_key_list);
 	std::vector<small_value_type> old_value_list(modulus, 0);
@@ -305,7 +305,7 @@ void hashl::resize(hash_offset_type size_asked) {
 	// copy over old hash keys and values
 	key_type key(*this), comp_key(*this);
 	for (hash_offset_type i(0); i < old_modulus; ++i) {
-		if (old_key_list[i] != invalid_key) {
+		if (old_key_list[i] != invalid_key && old_value_list[i]) {
 			key.copy_in(data, old_key_list[i]);
 			comp_key.make_complement(key);
 			const base_type key_hash(key < comp_key ? key.hash() : comp_key.hash());
@@ -322,8 +322,11 @@ void hashl::resize(hash_offset_type size_asked) {
 	}
 }
 
-// identical in effect to add()ing this hash to an empty hash
-// (except that values <min_cutoff are set to zero rather than removed)
+// identical in effect to add()ing this hash to an empty hash (except
+// that values <min_cutoff are set to zero rather than removed); note
+// that you have to resize() the hash if you want to save it properly
+// after this, as some values may have been set to zero which messes with
+// init_from_file()
 
 void hashl::normalize(const small_value_type min_cutoff, const small_value_type max_cutoff) {
 	for (hash_offset_type i(0); i < modulus; ++i) {
@@ -372,22 +375,31 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 		}
 	}
 	// combine metadata, if both hashes have it
+	hashl_metadata our_md, a_md;
 	if (!metadata.empty() && !a.metadata.empty()) {
 		// extract metadata from blobs (both ours and a's)
-		hashl_metadata our_md, a_md;
 		our_md.unpack(metadata);
 		const size_t padding(offset - our_md.sequence_length());
 		a_md.unpack(a.metadata);
 		our_md.add(a_md, padding);
 		our_md.pack(metadata);
-	} else if (!a.metadata.empty()) {	// put in what we can
-		hashl_metadata our_md, a_md;
+	} else if (!a.metadata.empty()) {	// tack a's onto some padding for ours
 		// add dummy entry for current hash
 		our_md.add_file("unknown");
 		our_md.add_read("padding");
 		our_md.add_read_range(0, offset);
 		a_md.unpack(a.metadata);
 		our_md.add(a_md);
+		our_md.pack(metadata);
+	} else if (!metadata.empty()) {		// tack padding onto ours
+		our_md.unpack(metadata);
+		const size_t padding(offset - our_md.sequence_length());
+		// add dummy entry for a
+		const size_t a_offset(a.data.size() * sizeof(base_type) * 8);
+		a_md.add_file("unknown");
+		a_md.add_read("padding");
+		a_md.add_read_range(0, a_offset);
+		our_md.add(a_md, padding);
 		our_md.pack(metadata);
 	}
 	return 1;
