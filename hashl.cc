@@ -196,11 +196,9 @@ void hashl::key_type::convert_to_string(std::string &sequence) const {
 	}
 }
 
-// find a key; return modulus as offset if not found
+// find a key; returns modulus if not found
 
-hashl::hash_offset_type hashl::find_offset(const key_type &key) const {
-	key_type comp_key(*this);
-	comp_key.make_complement(key);
+hashl::hash_offset_type hashl::find_offset(const key_type &key, const key_type &comp_key) const {
 	const base_type key_hash(key < comp_key ? key.hash() : comp_key.hash());
 	hash_offset_type i(key_hash % modulus);
 	if (key_list[i] == invalid_key) {
@@ -219,11 +217,17 @@ hashl::hash_offset_type hashl::find_offset(const key_type &key) const {
 	}
 }
 
+hashl::hash_offset_type hashl::find_offset(const key_type &key) const {
+	key_type comp_key(*this);
+	comp_key.make_complement(key);
+	return find_offset(key, comp_key);
+}
+
 // increment the count for a key (but don't create a new entry if it doesn't exist)
 
-bool hashl::increment(const key_type &key) {
-	const hash_offset_type i(find_offset(key));
-	if (i == modulus) {	// insert failed
+bool hashl::increment(const key_type &key, const key_type &comp_key) {
+	const hash_offset_type i(find_offset(key, comp_key));
+	if (i == modulus) {	// couldn't find it
 		return 0;
 	}
 	if (value_list[i] < max_small_value) {

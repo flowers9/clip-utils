@@ -104,16 +104,13 @@ class hashl {
 		}
 		~iterator(void) { }
 		// value()/key() undefined if called when pointing to end()
-		small_value_type value(void) const {
+		small_value_type &operator*(void) {
 			return list.value_list[offset_];
 		}
-		hash_offset_type offset(void) const {
+		const hash_offset_type &offset(void) const {
 			return offset_;
 		}
-		void set_value(const small_value_type i) {
-			list.value_list[offset_] = i;
-		}
-		void get_key(key_type &key) const {
+		void key(key_type &key) const {
 			key.copy_in(list.data, list.key_list[offset_]);
 		}
 		bool operator==(const iterator &__a) const {
@@ -156,13 +153,13 @@ class hashl {
 		const_iterator(const const_iterator &a) : list(a.list), offset_(a.offset_) { }
 		~const_iterator(void) { }
 		// value()/key() undefined if called when pointing to end()
-		small_value_type value(void) const {
+		const small_value_type &operator*(void) const {
 			return list.value_list[offset_];
 		}
-		hash_offset_type offset(void) const {
+		const hash_offset_type &offset(void) const {
 			return offset_;
 		}
-		void get_key(key_type &key) const {
+		void key(key_type &key) const {
 			key.copy_in(list.data, list.key_list[offset_]);
 		}
 		bool operator==(const const_iterator &__a) const {
@@ -199,7 +196,8 @@ class hashl {
 	size_t word_width;
     protected:
 	std::string boilerplate(void) const;
-	hash_offset_type find_offset(const key_type &) const;
+	hash_offset_type find_offset(const key_type &key) const;
+	hash_offset_type find_offset(const key_type &key, const key_type &comp_key) const;
 	hash_offset_type insert_offset(const key_type &key, const key_type &comp_key, data_offset_type);
     private:
 	hash_offset_type insert_key(hash_offset_type, data_offset_type);
@@ -215,6 +213,7 @@ class hashl {
 	void init_from_file(int);
 	// will not insert new key
 	bool increment(const key_type &);
+	bool increment(const key_type &key, const key_type &comp_key);
 	// will insert new key if missing
 	bool increment(const key_type &key, const key_type &comp_key, data_offset_type);
 	value_type value(const key_type &) const;

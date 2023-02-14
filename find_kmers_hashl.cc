@@ -145,8 +145,8 @@ static void check_reference(const hashl &lookup, const hashl &reference, std::ve
 	const hashl::const_iterator end_a(lookup.cend());
 	hashl::key_type key(lookup);
 	for (; a != end_a; ++a) {
-		if (a.value() && a.value() != hashl::invalid_value) {
-			a.get_key(key);
+		if (*a && *a != hashl::invalid_value) {
+			a.key(key);
 			// .value() returns 0 if key not found
 			const std::pair<hashl::data_offset_type, hashl::small_value_type> x(reference.entry(key));
 			if (x.second) {

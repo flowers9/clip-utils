@@ -87,12 +87,12 @@ static void print_mer_frequency(std::ostream &fp_out, const hashl &mer_list) {
 	hashl::const_iterator a(mer_list.cbegin());
 	const hashl::const_iterator end_a(mer_list.cend());
 	for (; a != end_a; ++a) {
-		if (a.value() >= opt_frequency_cutoff) {
-			a.get_key(key);
-			fp_out << convert_key(key) << ' ' << a.value() << "\n";
+		if (*a >= opt_frequency_cutoff) {
+			a.key(key);
+			fp_out << convert_key(key) << ' ' << *a << "\n";
 			reverse_key(key, comp_key);
 			if (key != comp_key) {
-				fp_out << convert_key(comp_key) << ' ' << a.value() << "\n";
+				fp_out << convert_key(comp_key) << ' ' << *a << "\n";
 			}
 		}
 	}
@@ -123,10 +123,10 @@ static void print_mer_histogram(std::ostream &fp_out, const hashl &mer_list) {
 	hashl::const_iterator a(mer_list.cbegin());
 	const hashl::const_iterator end_a(mer_list.cend());
 	for (; a != end_a; ++a) {
-		++counts[a.value()];
+		++counts[*a];
 		if (opt_print_gc) {
-			a.get_key(key);
-			gc_counts[a.value()] += count_gc(key);
+			a.key(key);
+			gc_counts[*a] += count_gc(key);
 		}
 	}
 	std::map<hashl::value_type, unsigned long>::const_iterator c(counts.begin());

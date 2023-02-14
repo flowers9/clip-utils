@@ -102,6 +102,29 @@ class OpenCompressedLocalData {
 		}
 		finish_nohang();
 	}
+	void close_process_wait(const int i) {
+		assert(-2 < i && i < open_max);
+		if (i == -1) {		// wait for all closed processes
+			std::list<pid_t>::const_iterator b(m_closed_processes.begin());
+			const std::list<pid_t>::const_iterator end_b(m_closed_processes.end());
+			for (; b != end_b; ++b) {
+				waitpid(*b, 0, 0);
+			}
+			m_closed_processes.clear();
+		} else {
+			close(i);
+			if (i == 0) {
+				m_already_closed_stdin = 1;
+			}
+			buffers[i].resize(0);
+			const std::map<int, pid_t>::iterator a(m_open_processes.find(i));
+			if (a != m_open_processes.end()) {
+				waitpid(a->second, 0, 0);
+				m_open_processes.erase(a);
+			}
+			finish_nohang();
+		}
+	}
 	const bool &already_closed_stdin(void) const {
 		return m_already_closed_stdin;
 	}
@@ -346,6 +369,12 @@ int open_compressed(const std::string &filename) {
 
 void close_compressed(const int fd) {
 	local.close_process(fd);
+}
+
+// wait for all remaining writes to finish
+
+void close_compressed_wait(const int fd) {
+	local.close_process_wait(fd);
 }
 
 // read input from a file descriptor - returns data up to end of line or

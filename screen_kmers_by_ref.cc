@@ -56,7 +56,7 @@ static size_t get_value(const std::string s) {
 }
 
 static void print_usage() {
-	std::cerr << "usage: dot_hashl saved_hash1 saved_hash2 ...\n"
+	std::cerr << "usage: screen_kmers_by_ref saved_hash1 saved_hash2 ...\n"
 		"    -h    print this help\n"
 		"    -f ## fastq min kmer frequency\n"
 		"    -F ## fastq max kmer frequency\n"
@@ -211,8 +211,8 @@ static void cross_ref_stdout(const hashl &reference_kmers, const hashl &fastq_km
 	hashl::key_type key(fastq_kmers), comp_key(fastq_kmers);
 	std::string s;
 	for (; a != end_a; ++a) {
-		if (a.value() && a.value() != hashl::invalid_value) {
-			a.get_key(key);
+		if (*a && *a != hashl::invalid_value) {
+			a.key(key);
 			// .value() returns 0 if key not found
 			const hashl::small_value_type x(reference_kmers.value(key));
 			if (x && x != hashl::invalid_value && x <= static_cast<unsigned int>(opt_max_kmer_sharing)) {
@@ -233,12 +233,12 @@ static void cross_ref_save(const hashl &reference_kmers, hashl &fastq_kmers) {
 	const hashl::iterator end_a(fastq_kmers.end());
 	hashl::key_type key(fastq_kmers);
 	for (; a != end_a; ++a) {
-		if (a.value() && a.value() != hashl::invalid_value) {
-			a.get_key(key);
+		if (*a && *a != hashl::invalid_value) {
+			a.key(key);
 			// .value() returns 0 if key not found
 			const hashl::small_value_type x(reference_kmers.value(key));
 			if (!x || x == hashl::invalid_value || x > static_cast<unsigned int>(opt_max_kmer_sharing)) {
-				a.set_value(hashl::invalid_value);
+				*a = hashl::invalid_value;
 			}
 		}
 	}
