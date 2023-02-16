@@ -187,6 +187,7 @@ class hashl {
     protected:
 	std::vector<data_offset_type> key_list;
 	std::vector<small_value_type> value_list;
+	std::vector<small_value_type> value_list_backup;	// only used for filtering
 	std::vector<base_type> data;
 	std::vector<char> metadata;
 	hash_offset_type used_elements;
@@ -212,9 +213,8 @@ class hashl {
 	void init(hash_offset_type size, size_t bits, std::vector<base_type> &data_in);
 	void init_from_file(int);
 	// will not insert new key
-	bool increment(const key_type &);
-	bool increment(const key_type &key, const key_type &comp_key);
-	// will insert new key if missing
+	void increment(const key_type &key, const key_type &comp_key);
+	// will insert new key if missing, returns false if insertion failed
 	bool increment(const key_type &key, const key_type &comp_key, data_offset_type);
 	value_type value(const key_type &) const;
 	std::pair<data_offset_type, value_type> entry(const key_type &) const;
@@ -267,6 +267,10 @@ class hashl {
 	// (<min_cutoff => ignored, <=cutoff => ++, >cutoff => invalid)
 	bool add(const hashl &, small_value_type min_cutoff = 0, small_value_type max_cutoff = 1);
 	void print(void) const;
+	// save and zero value_list
+	void filtering_prep(void);
+	// restore value_list for values in min-max, set to invalid_value for rest
+	void filtering_finish(small_value_type min, small_value_type max);
 };
 
 #endif // !_HASHL_H

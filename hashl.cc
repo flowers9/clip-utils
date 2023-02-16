@@ -225,15 +225,14 @@ hashl::hash_offset_type hashl::find_offset(const key_type &key) const {
 
 // increment the count for a key (but don't create a new entry if it doesn't exist)
 
-bool hashl::increment(const key_type &key, const key_type &comp_key) {
+void hashl::increment(const key_type &key, const key_type &comp_key) {
 	const hash_offset_type i(find_offset(key, comp_key));
 	if (i == modulus) {	// couldn't find it
-		return 0;
+		return;
 	}
 	if (value_list[i] < max_small_value) {
 		++value_list[i];
 	}
-	return 1;
 }
 
 bool hashl::increment(const key_type &key, const key_type &comp_key, const data_offset_type offset) {
@@ -442,4 +441,25 @@ void hashl::get_sequence(const data_offset_type start, const data_offset_type le
 		}
 		seq += values[(data[word_offset] >> bit_offset) & 3];
 	}
+}
+
+// make backup of value_list and zero all values
+
+void hashl::filtering_prep() {
+	value_list_backup.assign(modulus, 0);
+	value_list.swap(value_list_backup);
+}
+
+// restore value_list from backup, but set to invalid_value if they get filtered
+
+void hashl::filtering_finish(const hashl::small_value_type min, const hashl::small_value_type max) {
+	for (hash_offset_type i(0); i < modulus; ++i) {
+		if (key_list[i] == invalid_key) {
+		} else if (value_list[i] < min || max < value_list[i]) {
+			value_list[i] = invalid_value;
+		} else {
+			value_list[i] = value_list_backup[i];
+		}
+	}
+	value_list_backup.clear();
 }

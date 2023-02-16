@@ -28,7 +28,7 @@ static void print_usage() {
 		"	   library files are treated as one large file - to screen against\n"
 		"          multiple libraries, you have to run this program multiple times\n"
 		"    -h    print this help\n"
-		"    -f ## min kmer frequency [0]\n"
+		"    -f ## min kmer frequency [1]\n"
 		"    -F ## max kmer frequency [" << static_cast<unsigned int>(hashl::max_small_value) << "\n"
 		"    -o ## output file for resulting hash [overwrite original hash]\n"
 		"    -V    print version\n";
@@ -37,7 +37,7 @@ static void print_usage() {
 
 static void get_opts(const int argc, char * const * const argv) {
 	opt_max_kmer_frequency = hashl::max_small_value;
-	opt_min_kmer_frequency = 0;
+	opt_min_kmer_frequency = 1;
 	int c;
 	while ((c = getopt(argc, argv, "hf:F:o:V")) != EOF) {
 		switch (c) {
@@ -61,20 +61,17 @@ static void get_opts(const int argc, char * const * const argv) {
 			print_usage();
 		}
 	}
-	if (opt_min_kmer_frequency < 0) {
-		std::cerr << "Error: -f less than zero, try again\n";
+	if (opt_min_kmer_frequency < 1) {
+		std::cerr << "Error: -f less than one\n";
 		exit(1);
 	} else if (static_cast<unsigned int>(opt_min_kmer_frequency) > hashl::max_small_value) {
-		std::cerr << "Error: -f greater than " << static_cast<unsigned int>(hashl::max_small_value) << ", try again\n";
-		exit(1);
-	} else if (opt_max_kmer_frequency < 0) {
-		std::cerr << "Error: -F less than zero, try again\n";
-		exit(1);
-	} else if (static_cast<unsigned int>(opt_max_kmer_frequency) > hashl::max_small_value) {
-		std::cerr << "Error: -F greater than " << static_cast<unsigned int>(hashl::max_small_value) << ", try again\n";
+		std::cerr << "Error: -f greater than " << static_cast<unsigned int>(hashl::max_small_value) << '\n';
 		exit(1);
 	} else if (opt_min_kmer_frequency > opt_max_kmer_frequency) {
-		std::cerr << "Error: -f greater than -F, try again\n";
+		std::cerr << "Error: -f greater than -F\n";
+		exit(1);
+	} else if (static_cast<unsigned int>(opt_max_kmer_frequency) > hashl::max_small_value) {
+		std::cerr << "Error: -F greater than " << static_cast<unsigned int>(hashl::max_small_value) << '\n';
 		exit(1);
 	}
 	if (optind + 2 > argc) {
@@ -154,6 +151,8 @@ static void count_sequence_mers(hashl &reference_kmers, const std::string &seq, 
 	}
 }
 
+// for each range of value basepairs (if at least opt_mer_length in length), count kmers
+
 static void process_sequence(hashl &reference_kmers, const std::string &seq) {
 	size_t i(seq.find_first_of("ACGTacgt", 0));
 	while (i != std::string::npos) {
@@ -189,7 +188,7 @@ static void process_library(hashl &reference_kmers, const std::string &library_f
 			}
 			process_sequence(reference_kmers, seq);
 			++read_count;
-		} while (line[0] == '>');
+		} while (!line.empty());
 	} else if (line[0] == '@') {		// fastq file
 		do {
 			if (pfgets(fd, seq) == -1) {		// sequence
@@ -212,20 +211,6 @@ static void process_library(hashl &reference_kmers, const std::string &library_f
 	close_compressed(fd);
 }
 
-// change values to either 1 (if within min-max range) or invalid_value if not
-static void renormalize_hash(hashl &reference_kmers) {
-	hashl::iterator a(reference_kmers.begin());
-	const hashl::iterator end_a(reference_kmers.end());
-	for (; a != end_a; ++a) {
-		if (*a == hashl::invalid_value) {
-		} else if (*a < static_cast<unsigned int>(opt_min_kmer_frequency) || static_cast<unsigned int>(opt_max_kmer_frequency) < *a) {
-			*a = hashl::invalid_value;
-		} else {
-			*a = 1;
-		}
-	}
-}
-
 int main(const int argc, char * const * const argv) {
 	std::cerr << std::fixed << std::setprecision(2);
 	get_opts(argc, argv);
@@ -236,15 +221,14 @@ int main(const int argc, char * const * const argv) {
 		std::cerr << "Error: open: " << argv[optind] << '\n';
 		return 1;
 	}
-	// XXX - need to make sure all values are zero or invalid_value
 	reference_kmers.init_from_file(fd);
 	close_compressed(fd);
+	reference_kmers.filtering_prep();
 	opt_mer_length = reference_kmers.bits() / 2;
 	for (int i(optind + 1); i < argc; ++i) {
 		process_library(reference_kmers, argv[i]);
 	}
-	// re-normalize reference hash and save it
-	renormalize_hash(reference_kmers);
+	reference_kmers.filtering_finish(opt_min_kmer_frequency, opt_max_kmer_frequency);
 	save_hash(reference_kmers, opt_output_hash);
 	return 0;
 }
