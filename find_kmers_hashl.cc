@@ -179,7 +179,7 @@ int main(const int argc, char * const * const argv) {
 	// load lookup_hash
 	int fd(open_compressed(argv[optind]));
 	if (fd == -1) {
-		std::cerr << "Error: could not read lokup hash: " << argv[optind] << '\n';
+		std::cerr << "Error: could not read lookup hash: " << argv[optind] << '\n';
 		return 1;
 	}
 	hashl lookup_hash;
@@ -189,9 +189,9 @@ int main(const int argc, char * const * const argv) {
 	std::vector<std::string> file_list;
 	hashl reference_hash;
 	for (int i(optind + 1); i < argc; ++i) {
-		fd = open_compressed(argv[optind]);
+		fd = open_compressed(argv[i]);
 		if (fd == -1) {
-			std::cerr << "Error: could not read lokup hash: " << argv[optind] << '\n';
+			std::cerr << "Error: could not read reference hash: " << argv[i] << '\n';
 			return 1;
 		}
 		reference_hash.init_from_file(fd);

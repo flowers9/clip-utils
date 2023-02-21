@@ -434,6 +434,7 @@ static void screen_shared_keys(void) {
 	}
 }
 
+#if 0
 static void calculate_shared_identity(void) {
 	int i, j;
 	while (pair_counter.get_next(i, j)) {
@@ -527,6 +528,7 @@ static void find_dot_values(const int fastq_count, char * const * argv) {
 	calculate_shared_identities();
 	print_results(x_size, y_size, style, argv);
 }
+#endif
 
 int main(const int argc, char * const * argv) {
 	get_opts(argc, argv);

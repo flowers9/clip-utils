@@ -1,6 +1,7 @@
 #include "hashl.h"	// hashl
 #include "hashl_metadata.h"	// hashl_metadata
 #include "open_compressed.h"	// close_compressed(), get_suffix(), open_compressed()
+#include "time_used.h"	// elapsed_time(), start_time()
 #include "version.h"	// VERSION
 #include "write_fork.h"	// close_fork(), write_fork()
 #include <errno.h>	// errno
@@ -13,33 +14,37 @@
 #include <stdlib.h>	// exit()
 #include <string.h>	// strerror()
 #include <string>	// string
+#include <time.h>	// time()
 #include <vector>	// vector<>
 
 // take an existing hash, count hits against a library, and mark
 // kmers outside the given ranges as invalid
 
+static bool opt_feedback;
 static int opt_max_kmer_frequency;
 static int opt_min_kmer_frequency;
 static size_t opt_mer_length;
 static std::string opt_output_hash;
 
 static void print_usage() {
-	std::cerr << "usage: screen_kmers_by_lib reference_hash library.fasta [more_library.fasta [...] ]\n"
-		"	   library files are treated as one large file - to screen against\n"
-		"          multiple libraries, you have to run this program multiple times\n"
+	std::cerr << "usage: screen_kmers_by_lib reference_hash library.fastx [more_library.fastx [...] ]\n"
+		"	   multiple library files are treated as one large file - to screen against\n"
+		"          multiple libraries, you have to run this program once per library\n"
 		"    -h    print this help\n"
 		"    -f ## min kmer frequency [1]\n"
-		"    -F ## max kmer frequency [" << static_cast<unsigned int>(hashl::max_small_value) << "\n"
+		"    -F ## max kmer frequency [" << static_cast<unsigned int>(hashl::max_small_value) << "]\n"
 		"    -o ## output file for resulting hash [overwrite original hash]\n"
+		"    -q    don't print status updates\n"
 		"    -V    print version\n";
 	exit(1);
 }
 
 static void get_opts(const int argc, char * const * const argv) {
+	opt_feedback = 1;
 	opt_max_kmer_frequency = hashl::max_small_value;
 	opt_min_kmer_frequency = 1;
 	int c;
-	while ((c = getopt(argc, argv, "hf:F:o:V")) != EOF) {
+	while ((c = getopt(argc, argv, "hf:F:o:qV")) != EOF) {
 		switch (c) {
 		    case 'h':
 			print_usage();
@@ -52,6 +57,9 @@ static void get_opts(const int argc, char * const * const argv) {
 			break;
 		    case 'o':
 			opt_output_hash = optarg;
+			break;
+		    case 'q':
+			opt_feedback = 0;
 			break;
 		    case 'V':
 			std::cerr << "dot_hashl version " << VERSION << '\n';
@@ -130,7 +138,7 @@ static hashl::base_type convert_char(const char c) {
 	    case 't':
 		return 3;
 	    default:
-		std::cerr << "Error: non-ACGT basepair: " << static_cast<char>(c) << "\n";
+		std::cerr << "Error: non-ACGT basepair: " << static_cast<char>(c) << '\n';
 		exit(1);
 	}
 }
@@ -175,6 +183,10 @@ static void process_library(hashl &reference_kmers, const std::string &library_f
 		std::cerr << "Error: open: " << library_file << '\n';
 		exit(1);
 	}
+	if (opt_feedback) {
+		std::cerr << time(0) << ": processing " << library_file << '\n';
+		start_time();
+	}
 	size_t read_count(0);
 	std::string line, seq;
 	if (pfgets(fd, line) == -1) {		// empty file
@@ -188,6 +200,10 @@ static void process_library(hashl &reference_kmers, const std::string &library_f
 			}
 			process_sequence(reference_kmers, seq);
 			++read_count;
+			if (opt_feedback && elapsed_time() >= 600) {
+				start_time();
+				std::cerr << time(0) << ": " << read_count << " reads processed\n";
+			}
 		} while (!line.empty());
 	} else if (line[0] == '@') {		// fastq file
 		do {
@@ -197,6 +213,10 @@ static void process_library(hashl &reference_kmers, const std::string &library_f
 			}
 			process_sequence(reference_kmers, seq);
 			++read_count;
+			if (opt_feedback && elapsed_time() >= 600) {
+				start_time();
+				std::cerr << time(0) << ": " << read_count << " reads processed\n";
+			}
 			// skip quality header and quality
 			// (use seq because it'll be the same length as quality)
 			if (pfgets(fd, line) == -1 || pfgets(fd, seq) == -1) {
@@ -209,6 +229,9 @@ static void process_library(hashl &reference_kmers, const std::string &library_f
 		exit(1);
 	}
 	close_compressed(fd);
+	if (opt_feedback) {
+		std::cerr << time(0) << ": " << read_count << " reads processed\n";
+	}
 }
 
 int main(const int argc, char * const * const argv) {
@@ -221,6 +244,9 @@ int main(const int argc, char * const * const argv) {
 		std::cerr << "Error: open: " << argv[optind] << '\n';
 		return 1;
 	}
+	if (opt_feedback) {
+		std::cerr << time(0) << ": reading in reference hash\n";
+	}
 	reference_kmers.init_from_file(fd);
 	close_compressed(fd);
 	reference_kmers.filtering_prep();
@@ -229,6 +255,12 @@ int main(const int argc, char * const * const argv) {
 		process_library(reference_kmers, argv[i]);
 	}
 	reference_kmers.filtering_finish(opt_min_kmer_frequency, opt_max_kmer_frequency);
+	if (opt_feedback) {
+		std::cerr << time(0) << ": saving reference hash\n";
+	}
 	save_hash(reference_kmers, opt_output_hash);
+	if (opt_feedback) {
+		std::cerr << time(0) << ": save finished\n";
+	}
 	return 0;
 }

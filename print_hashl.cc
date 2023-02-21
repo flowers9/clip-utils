@@ -52,15 +52,6 @@ int main(int argc, char **argv) {
 	if (opt_just_metadata) {
 		return 0;
 	}
-	std::cout << '\n' << x.size() << ' ' << x.capacity() << '\n';
-	hashl::const_iterator a(x.cbegin());
-	const hashl::const_iterator end_a(x.cend());
-	hashl::key_type key(x);
-	std::string s;
-	for (; a != end_a; ++a) {
-		a.key(key);
-		key.convert_to_string(s);
-		std::cout << s << ' ' << static_cast<unsigned int>(*a) << '\n';
-	}
+	x.print();
 	return 0;
 }

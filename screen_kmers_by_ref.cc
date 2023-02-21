@@ -167,9 +167,6 @@ static void save_hash(const hashl &mer_list, const std::string &filename) {
 
 static bool load_and_combine_hashes(hashl &kmer_hash, const std::vector<std::string> &files, const int min_cutoff, const int max_cutoff, const size_t starting_hash_size = 0) {
 	std::cerr << time(0) << '\n';
-	if (starting_hash_size) {
-		kmer_hash.resize(starting_hash_size);
-	}
 	hashl tmp_hash;			// declare outside loop so memory can get reused
 	// load in reference saved hashes
 	std::vector<std::string>::const_iterator a(files.begin());
@@ -183,6 +180,10 @@ static bool load_and_combine_hashes(hashl &kmer_hash, const std::vector<std::str
 		}
 		tmp_hash.init_from_file(fd);
 		close_compressed(fd);
+		if (a == files.begin()) {	// set the bit width, possibly preallocate
+			std::vector<hashl::base_type> tmp_data;
+			kmer_hash.init(starting_hash_size, tmp_hash.bits(), tmp_data);
+		}
 		if (!kmer_hash.add(tmp_hash, min_cutoff, max_cutoff)) {
 			std::cerr << "Error: failed to add hash\n";
 			return 0;

@@ -321,25 +321,6 @@ void hashl::resize(hash_offset_type size_asked) {
 	}
 }
 
-// identical in effect to add()ing this hash to an empty hash (except
-// that values <min_cutoff are set to zero rather than removed); note
-// that you have to resize() the hash if you want to save it properly
-// after this, as some values may have been set to zero which messes with
-// init_from_file()
-
-void hashl::normalize(const small_value_type min_cutoff, const small_value_type max_cutoff) {
-	for (hash_offset_type i(0); i < modulus; ++i) {
-		if (key_list[i] == invalid_key) {
-		} else if (value_list[i] < min_cutoff) {
-			value_list[i] = 0;
-		} else if (value_list[i] > max_cutoff) {
-			value_list[i] = invalid_value;
-		} else {
-			value_list[i] = 1;
-		}
-	}
-}
-
 // add in new hash: any values <min_cutoff ignored, <=max_cutoff increment existing value,
 // values of >max_cutoff set to invalid_value
 
@@ -383,14 +364,16 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 		our_md.add(a_md, padding);
 		our_md.pack(metadata);
 	} else if (!a.metadata.empty()) {	// tack a's onto some padding for ours
-		// add dummy entry for current hash
-		our_md.add_file("unknown");
-		our_md.add_read("padding");
-		our_md.add_read_range(0, offset);
+		if (offset) {
+			// add dummy entry for current hash
+			our_md.add_file("unknown");
+			our_md.add_read("padding");
+			our_md.add_read_range(0, offset);
+		}
 		a_md.unpack(a.metadata);
 		our_md.add(a_md);
 		our_md.pack(metadata);
-	} else if (!metadata.empty()) {		// tack padding onto ours
+	} else if (!metadata.empty() && !a.data.empty()) {		// tack padding onto ours
 		our_md.unpack(metadata);
 		const size_t padding(offset - our_md.sequence_length());
 		// add dummy entry for a
@@ -407,8 +390,9 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 // for debugging
 
 void hashl::print() const {
-	int max_width(1);
-	for (size_t i(10); i < data.size() * sizeof(base_type) * 8; i *= 10, ++max_width) { }
+	int max_offset_width(1), max_key_width(1);
+	for (size_t i(10); i < modulus; i *= 10, ++max_offset_width) { }
+	for (size_t i(10); i < data.size() * sizeof(base_type) * 8; i *= 10, ++max_key_width) { }
 	std::cout << "modulus: " << modulus << "\n"
 		<< "collision modulus: " << collision_modulus << "\n"
 		<< "used elements: " << used_elements << "\n"
@@ -422,7 +406,7 @@ void hashl::print() const {
 		if (key_list[i] != invalid_key) {
 			k.copy_in(data, key_list[i]);
 			k.convert_to_string(s);
-			std::cout << std::setw(max_width) << key_list[i] << ' ' << std::setw(3) << static_cast<unsigned int>(value_list[i]) << ' ' << s << "\n";
+			std::cout << std::setw(max_offset_width) << i << ' ' << std::setw(max_key_width) << key_list[i] << ' ' << std::setw(3) << static_cast<unsigned int>(value_list[i]) << ' ' << s << "\n";
 		}
 	}
 }

@@ -6,7 +6,7 @@ OS := $(shell uname -s)
 # otherwise, not using it will save memory
 
 CXX     ?= g++
-DEBUG    = -O2 #-DCOMPRESS_READS
+DEBUG    = -g -O2 #-DCOMPRESS_READS
 # note that the uncompressed version of read.cc has diverged from the
 # compressed version (has a few extra bits in it)
 CPPFLAGS = $(extra_includes) -I./include $(DEBUG) -Wall -Wextra -Wpointer-arith -Wshadow \
@@ -98,7 +98,7 @@ bin/dot_hashn: obj/dot_hashn.o obj/open_compressed.o obj/hashn.o obj/next_prime.
 bin/screen_kmers_by_ref: obj/screen_kmers_by_ref.o obj/open_compressed.o obj/hashl.o obj/hashl_metadata.o obj/next_prime.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-bin/screen_kmers_by_lib: obj/screen_kmers_by_lib.o obj/open_compressed.o obj/hashl.o obj/hashl_metadata.o obj/next_prime.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o
+bin/screen_kmers_by_lib: obj/screen_kmers_by_lib.o obj/open_compressed.o obj/hashl.o obj/hashl_metadata.o obj/next_prime.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o obj/time_used.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 bin/find_kmers_hashl: obj/find_kmers_hashl.o obj/open_compressed.o obj/hashl.o obj/hashl_metadata.o obj/next_prime.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o
