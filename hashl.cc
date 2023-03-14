@@ -354,7 +354,7 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 			}
 		}
 	}
-	// combine metadata, if both hashes have it
+	// combine metadata
 	hashl_metadata our_md, a_md;
 	if (!metadata.empty() && !a.metadata.empty()) {
 		// extract metadata from blobs (both ours and a's)
@@ -363,7 +363,7 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 		a_md.unpack(a.metadata);
 		our_md.add(a_md, padding);
 		our_md.pack(metadata);
-	} else if (!a.metadata.empty()) {	// tack a's onto some padding for ours
+	} else if (!a.metadata.empty()) {			// pad ours, then add a's
 		if (offset) {
 			// add dummy entry for current hash
 			our_md.add_file("unknown");
@@ -373,7 +373,7 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 		a_md.unpack(a.metadata);
 		our_md.add(a_md);
 		our_md.pack(metadata);
-	} else if (!metadata.empty() && !a.data.empty()) {		// tack padding onto ours
+	} else if (!metadata.empty() && !a.data.empty()) {	// pad a's, then add to ours
 		our_md.unpack(metadata);
 		const size_t padding(offset - our_md.sequence_length());
 		// add dummy entry for a

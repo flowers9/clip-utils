@@ -16,6 +16,7 @@
 // go through a target's hash seeing which kmers match; multiple targets
 // are treated as one big target
 
+static bool opt_print_histogram;
 static int opt_fastq_max_kmer_frequency;
 static int opt_fastq_min_kmer_frequency;
 static int opt_hash_load;
@@ -56,8 +57,9 @@ static size_t get_value(const std::string s) {
 }
 
 static void print_usage() {
-	std::cerr << "usage: screen_kmers_by_ref saved_hash1 saved_hash2 ...\n"
+	std::cerr << "usage: screen_kmers_by_ref [target_hash1 [target_hash2 ...]]\n"
 		"    -h    print this help\n"
+		"    -H    print histogram of combined reference\n"
 		"    -f ## fastq min kmer frequency\n"
 		"    -F ## fastq max kmer frequency\n"
 		"    -m ## reference min kmer frequency\n"
@@ -68,6 +70,7 @@ static void print_usage() {
 		"    -S ## load histogram memory dump from given file\n"
 		"    -u ## only count kmers shared with at most ## references\n"
 		"          (negative values mean shared by all but ##) [-1]\n"
+		"          (only affects target screening, not -o output)\n"
 		"    -V    print version\n"
 		"    -z ## number of unique kmers to pre-allocate for combined reference hash\n"
 		"          (k, m, or g may be suffixed)\n";
@@ -80,13 +83,17 @@ static void get_opts(const int argc, char * const * const argv) {
 	opt_hash_load = -1;
 	opt_max_kmer_sharing = -1;
 	opt_nmers = 0;
+	opt_print_histogram = 0;
 	opt_reference_max_kmer_frequency = 1;
 	opt_reference_min_kmer_frequency = 0;
 	int c;
-	while ((c = getopt(argc, argv, "hf:F:m:M:o:r:s:S:u:Vz:")) != EOF) {
+	while ((c = getopt(argc, argv, "hHf:F:m:M:o:r:s:S:u:Vz:")) != EOF) {
 		switch (c) {
 		    case 'h':
 			print_usage();
+			break;
+		    case 'H':
+			opt_print_histogram = 1;
 			break;
 		    case 'f':
 			std::istringstream(optarg) >> opt_fastq_min_kmer_frequency;
@@ -163,6 +170,27 @@ static void save_hash(const hashl &mer_list, const std::string &filename) {
 	}
 	mer_list.save(fd);
 	close_fork(fd);
+}
+
+// print histogram of n-mer occurrences
+
+static void print_mer_histogram(const hashl &mer_list) {
+	std::map<hashl::value_type, unsigned long> counts;
+	hashl::const_iterator a(mer_list.cbegin());
+	const hashl::const_iterator end_a(mer_list.cend());
+	for (; a != end_a; ++a) {
+		++counts[*a];
+	}
+	std::cout << std::fixed << std::setprecision(2);
+	double i(0);
+	double total(mer_list.size());
+	std::map<hashl::value_type, unsigned long>::const_iterator c(counts.begin());
+	const std::map<hashl::value_type, unsigned long>::const_iterator end_c(counts.end());
+	for (; c != end_c; ++c) {
+		const double x(double(100) * c->second);
+		i += x;
+		std::cout << c->first << ' ' << c->second << ' ' << x / total << ' ' << i / total << "\n";
+	}
 }
 
 static bool load_and_combine_hashes(hashl &kmer_hash, const std::vector<std::string> &files, const int min_cutoff, const int max_cutoff, const size_t starting_hash_size = 0) {
@@ -272,6 +300,9 @@ int main(const int argc, char * const * const argv) {
 		if (!opt_hash_save.empty()) {
 			save_hash(reference_kmers, opt_hash_save);
 		}
+	}
+	if (opt_print_histogram) {
+		print_mer_histogram(reference_kmers);
 	}
 	if (optind == argc) {	// just saving the created hash, presumably
 		return 0;

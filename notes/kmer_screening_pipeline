@@ -9,6 +9,7 @@ histogram_hashl -m 80 -l .5 -L .5 -s ref2.hash.gz ref2.fa
 ...
 
 combine hashes into one combined hash
+(do not use -u option at this stage - use below)
 -------------------------------------
 screen_kmers_by_ref -s ref.combined.gz -r ref1.hash.gz -r ref2.hash.gz ...
 
@@ -27,6 +28,7 @@ create target hash
 histogram_hashl -m 80 -l .5 -L .5 -s target.hash.gz target.fa
 
 screen target by screened combined hash
+(proper place to use -u option, if desired)
 ---------------------------------------
 screen_kmers_by_ref -o targets.found.gz -S ref.screened.gz target.hash.gz
 

@@ -193,7 +193,7 @@ class hashl {
 	hash_offset_type used_elements;
 	hash_offset_type modulus;
 	hash_offset_type collision_modulus;
-	size_t bit_width;			// only used by key_type
+	size_t bit_width;
 	size_t word_width;
     protected:
 	std::string boilerplate(void) const;

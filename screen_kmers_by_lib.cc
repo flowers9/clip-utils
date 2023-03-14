@@ -28,7 +28,7 @@ static std::string opt_output_hash;
 
 static void print_usage() {
 	std::cerr << "usage: screen_kmers_by_lib reference_hash library.fastx [more_library.fastx [...] ]\n"
-		"	   multiple library files are treated as one large file - to screen against\n"
+		"          multiple library files are treated as one large file - to screen against\n"
 		"          multiple libraries, you have to run this program once per library\n"
 		"    -h    print this help\n"
 		"    -f ## min kmer frequency [1]\n"
