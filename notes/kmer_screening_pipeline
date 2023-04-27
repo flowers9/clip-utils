@@ -15,7 +15,7 @@ screen_kmers_by_ref -s ref.combined.gz -r ref1.hash.gz -r ref2.hash.gz ...
 
 screen combined hash by library
 -------------------------------
-screen_kmers_by_lib -o ref.screened.gz ref.combined lib1.fa
+screen_kmers_by_lib -o ref.screened.gz ref.combined.gz lib1.fa
 screen_kmers_by_lib ref.screened.gz lib2.fa
 screen_kmers_by_lib ref.screened.gz lib3.fa
 ...

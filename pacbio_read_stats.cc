@@ -1,5 +1,7 @@
 // read a pacbio fasta, fastq, or bam file and create a histogram of
-// the longest subread length for each read (or all subreads with -a)
+// the longest subread length for each read (or all subreads with -a);
+// can also be used with non-raw-ccs reads
+
 
 #include "open_compressed.h"	// close_compressed(), find_suffix(), open_compressed(), pfgets()
 #include "pbbam/BamReader.h"	// BamReader
@@ -17,7 +19,7 @@
 #include <sstream>	// istringstream, ostringstream
 #include <stdio.h>	// EOF
 #include <stdlib.h>	// exit()
-#include <string>	// string
+#include <string>	// string, swap()
 #include <sys/stat.h>	// stat(), struct stat
 #include <sys/types.h>	// size_t
 #include <vector>	// vector<>
@@ -73,8 +75,11 @@ class CurrentState {
 		seq_length_ = length;
 		seq_id_offset_ = id_offset;
 	}
-	std::vector<size_t> &read_lengths(void) {
+	const std::vector<size_t> &read_lengths(void) const {
 		return read_lengths_;
+	}
+	void sort_lengths(void) {
+		std::sort(read_lengths_.begin(), read_lengths_.end());
 	}
 };
 
@@ -103,7 +108,7 @@ void CurrentState::save_length(void) {
 		std::string s(get_pacbio_read());
 		if (s != last_pacbio_id_) {
 			read_lengths_.push_back(best_fragment_length_);
-			last_pacbio_id_ = s;
+			std::swap(last_pacbio_id_, s);
 			best_fragment_length_ = seq_length_;
 		} else if (best_fragment_length_ < seq_length_) {
 			best_fragment_length_ = seq_length_;
@@ -417,7 +422,7 @@ static void read_reads(const std::string &seq_file) {
 	close_compressed(fd);
 }
 
-// like read_reads(), but a bam file instead of a fasta/q one
+// like read_reads(), but a bam file instead of a fasta/q one;
 static void read_reads_bam(const std::string &bam_file) {
 	// BamReader throws on error
 	PacBio::BAM::BamReader f(bam_file);
@@ -426,8 +431,9 @@ static void read_reads_bam(const std::string &bam_file) {
 		std::string id(r.FullName());
 		current.save_length();
 		const size_t id_offset(get_id_start(id));
-		const size_t start(r.QueryStart());
-		const size_t end(r.QueryEnd());
+		const size_t start(r.HasQueryStart() ? r.QueryStart() : 0);
+		// using Sequence().length() is slow, but thems the breaks
+		const size_t end(r.HasQueryEnd() ? r.QueryEnd() : r.Sequence().length());
 		const size_t read_size(start < end ? end - start : start - end);
 		current.set_seq(id, read_size, id_offset);
 	}
@@ -484,8 +490,8 @@ static int get_width(unsigned long long x, const int min_width) {
 // and what their total basepairs and average length will be
 
 static void print_histogram(void) {
-	std::vector<size_t> &read_lengths(current.read_lengths());
-	std::sort(read_lengths.begin(), read_lengths.end());
+	current.sort_lengths();
+	const std::vector<size_t> &read_lengths(current.read_lengths());
 	ReadStats max_values(0, 0, 0);
 	std::vector<ReadStats> histogram;
 	size_t j(0);
@@ -550,7 +556,7 @@ static void print_histogram(void) {
 // print simple read histogram
 
 static void print_full_histogram(void) {
-	std::vector<size_t> &read_lengths(current.read_lengths());
+	const std::vector<size_t> &read_lengths(current.read_lengths());
 	std::map<size_t, size_t> histogram;
 	std::vector<size_t>::const_iterator a(read_lengths.begin());
 	const std::vector<size_t>::const_iterator end_a(read_lengths.end());

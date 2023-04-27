@@ -21,7 +21,7 @@
 #include <time_used.h>
 #endif
 
-// given a list of parent loci files and a read file, will find any exact
+// given a list of parent loci files and a read file(s), will find any exact
 // sequence matches (comped or not) between loci sequence and read sequence
 // that contain the entire locus sequence
 
@@ -122,9 +122,12 @@ static void print_usage(void) {
 	std::cerr <<
 		"usage: find_kmers [opts] <fastq_file> <parent_file1> [parent_file2] ...\n"
 		"    (multiple parent files are indexed 0-9A-Za-z)\n"
-		"    -b ## per-thread input buffer size (in lines) [4k]\n"
-		"    -j ## threads [4]\n"
-		"    -m ## mer length [32]\n"
+		"    -b ##  per-thread input buffer size (in lines) [4k]\n"
+		"    -j ##  threads [4]\n"
+		"    -m ##  mer length [32]\n"
+		"    -f ##  fastq_file (may be specified multiple times; if given,\n"
+		"           all non -f files are treated as parent files)\n"
+
 	;
 }
 
@@ -183,15 +186,18 @@ static size_t get_value(const std::string s) {
 	}
 }
 
-static void get_opts(int argc, char **argv, size_t &input_buffer_size, size_t &n_threads) {
+static void get_opts(int argc, char **argv, size_t &input_buffer_size, size_t &n_threads, std::vector<std::string> &fastq_files) {
 	input_buffer_size = 4 * 1024;	// lines
 	n_threads = 4;
 	opt_mer_length = 32;
 	int c;
-	while ((c = getopt(argc, argv, "b:j:m:")) != EOF) {
+	while ((c = getopt(argc, argv, "b:f:j:m:")) != EOF) {
 		switch (c) {
 		    case 'b':
 			input_buffer_size = get_value(optarg);
+			break;
+		    case 'f':
+			fastq_files.push_back(optarg);
 			break;
 		    case 'j':
 			std::istringstream(optarg) >> n_threads;
@@ -206,7 +212,11 @@ static void get_opts(int argc, char **argv, size_t &input_buffer_size, size_t &n
 	if ((input_buffer_size & 1) == 1) {	// needs to be an even number
 		++input_buffer_size;
 	}
-	if (optind + 2 > argc) {
+	// if no -f options are given, the first non-option argument is the fastq_file
+	if (fastq_files.empty() && optind < argc) {
+		fastq_files.push_back(argv[optind++]);
+	}
+	if (optind == argc) {
 		throw LocalException("too few files specified", 1);
 	}
 }
@@ -562,16 +572,14 @@ static void store_thread_buffer(void) {
 	}
 }
 
-// returns 0 if EOF encountered
+// returns number of filled lines in buffer
 
-static void fill_input_buffer(int fd, std::vector<std::string> &buffer) {
-	size_t i(0);
+static size_t fill_input_buffer(const int fd, std::vector<std::string> &buffer, const size_t offset = 0) {
 	std::string line;
-	for (;;) {
+	for (size_t i(offset); i < buffer.size(); ++i) {
 		std::string &name(buffer[i]);
-		if (pfgets(fd, name) == EOF) {
-			buffer.resize(i);
-			return;
+		if (pfgets(fd, name) == -1) {
+			return i;
 		}
 #ifdef PROFILE
 		input_read += name.size();
@@ -584,31 +592,29 @@ static void fill_input_buffer(int fd, std::vector<std::string> &buffer) {
 			name.resize(j);
 		}
 		std::string &seq(buffer[++i]);
-		if (pfgets(fd, seq) == EOF) {
+		if (pfgets(fd, seq) == -1) {
 			throw LocalException("premature end of read file");
 		}
 #ifdef PROFILE
 		input_read += seq.size();
 #endif
 		// switching to skip_next_line() didn't actually help
-		if (pfgets(fd, line) == EOF) {
+		if (pfgets(fd, line) == -1) {
 			throw LocalException("premature end of read file");
 		} else if (line.compare("+") != 0) {
-			throw LocalException("bad quality read name line");
+			throw LocalException("bad quality header line");
 		}
 #ifdef PROFILE
 		input_read += line.size();
 #endif
-		if (pfgets(fd, line) == EOF) {
+		if (pfgets(fd, line) == -1) {
 			throw LocalException("premature end of read file");
 		}
 #ifdef PROFILE
 		input_read += line.size();
 #endif
-		if (++i == buffer.size()) {
-			return;
-		}
 	}
+	return buffer.size();
 }
 
 // converts key to sequence
@@ -649,22 +655,27 @@ static void print_output(void) {
 	}
 }
 
-// read fastq file, checking to see if any kmers are in lookup_list
-
-static void grep_file(const char * const filename, const size_t input_buffer_size, const size_t n_threads) {
-	run_state = RUNNING;
-	std::thread threads[n_threads];
-	input_buffers.resize(n_threads + 1);
-	output_buffers.resize(n_threads + 1);
-	input_empty_buffers.reserve(n_threads + 1);
-	input_filled_buffers.reserve(n_threads + 1);
-	output_empty_buffers.reserve(n_threads + 1);
-	output_filled_buffers.reserve(n_threads + 1);
-	for (size_t i(0); i != n_threads + 1; ++i) {
+static void allocate_buffers(const size_t input_buffer_size, const size_t n_threads) {
+	input_buffers.resize(n_threads);
+	output_buffers.resize(n_threads);
+	input_empty_buffers.reserve(n_threads);
+	input_filled_buffers.reserve(n_threads);
+	output_empty_buffers.reserve(n_threads);
+	output_filled_buffers.reserve(n_threads);
+	for (size_t i(0); i != n_threads; ++i) {
 		input_buffers[i].resize(input_buffer_size);
 		input_empty_buffers.push_back(i);
 		output_empty_buffers.push_back(i);
 	}
+}
+
+// read fastq file, checking to see if any kmers are in lookup_list
+
+static void grep_files(const std::vector<std::string> &fastq_files, const size_t input_buffer_size, const size_t n_threads) {
+	run_state = RUNNING;
+	std::thread threads[n_threads];
+	// +1 to handle store_thread_buffer()
+	allocate_buffers(input_buffer_size, n_threads + 1);
 #ifdef PROFILE
 	iet = iec = ift = ifc = oet = oec = oft = ofc = 0;
 	input_read = 0;
@@ -674,9 +685,11 @@ static void grep_file(const char * const filename, const size_t input_buffer_siz
 	for (size_t i(0); i != n_threads; ++i) {
 		threads[i] = std::thread(process_input_buffer);
 	}
-	const int fd(open_compressed(filename));
+	std::vector<std::string>::const_iterator a(fastq_files.begin());
+	const std::vector<std::string>::const_iterator end_a(fastq_files.end());
+	int fd(open_compressed(*a));
 	if (fd == -1) {
-		throw LocalException("couldn't open read file");
+		throw LocalException("couldn't open read file " + *a);
 	}
 	// cycle buffers
 	for (;;) {
@@ -699,13 +712,29 @@ static void grep_file(const char * const filename, const size_t input_buffer_siz
 		}
 #endif
 		const size_t i(get_empty_input_buffer());
-		fill_input_buffer(fd, input_buffers[i]);
-		if (input_buffers[i].empty()) {
-			break;
+		size_t filled(fill_input_buffer(fd, input_buffers[i]));
+		// see if we need to move on to the next file (if any)
+		// (use while in case of short input files)
+		while (filled < input_buffer_size) {
+			close_compressed(fd);
+			if (++a != end_a) {
+				fd = open_compressed(*a);
+				if (fd == -1) {
+					throw LocalException("couldn't open read file " + *a);
+				}
+				// finish filling up current buffer
+				filled = fill_input_buffer(fd, input_buffers[i], filled);
+			} else {
+				// we're done with input, but process partial final buffer (if any)
+				if (filled) {
+					input_buffers[i].resize(filled);
+					mark_input_buffer_filled(i);
+				}
+				break;
+			}
 		}
 		mark_input_buffer_filled(i);
 	}
-	close_compressed(fd);
 	{	// lock to prevent very unlikely race condition
 		std::lock_guard<std::mutex> lock(input_filled_mutex);
 		run_state = FINISH_INPUT; // finish processing input buffers
@@ -727,11 +756,10 @@ int main(int argc, char **argv) {
 	int had_error(0);
 	try {
 		size_t input_buffer_size, n_threads;
-		get_opts(argc, argv, input_buffer_size, n_threads);
+		std::vector<std::string> fastq_files;
+		get_opts(argc, argv, input_buffer_size, n_threads, fastq_files);
 		init_mer();
-		const char * const fastq_file(argv[optind]);
-		++optind;
-		int multi_parent(optind + 1 != argc);
+		const int multi_parent(optind + 1 != argc);
 		if (multi_parent) {
 			const std::string parent_index("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
 			if (static_cast<size_t>(argc - optind) > parent_index.size()) {
@@ -750,7 +778,7 @@ int main(int argc, char **argv) {
 		lookup_list.init(loci.size() * 2);
 		hash_loci();
 		// read read file, print matches
-		grep_file(fastq_file, input_buffer_size, n_threads);
+		grep_files(fastq_files, input_buffer_size, n_threads);
 	} catch (std::exception &e) {
 		std::cerr << "Error: " << e.what() << "\n";
 		LocalException *x(dynamic_cast<LocalException *>(&e));

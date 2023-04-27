@@ -82,16 +82,11 @@ static void read_bam(const char * const file, std::map<uint32_t, uint32_t> &well
 				++well_read_size[well_id];
 			}
 		} else {	// using read size (max or total)
-			uint32_t read_size;
-			// in addition to being more correct, faster than Sequence().length()
-			// but, not always present for ccs reads
-			if (bam_record.HasQueryStart() && bam_record.HasQueryEnd()) {
-				const uint32_t start(bam_record.QueryStart());
-				const uint32_t end(bam_record.QueryEnd());
-				read_size = start < end ? end - start : start - end;
-			} else {
-				read_size = bam_record.Sequence().length();
-			}
+			// according to the docs, the libraries are supposed to do this
+			// check on their own, but apparently not
+			const uint32_t start(bam_record.HasQueryStart() ? bam_record.QueryStart() : 0);
+			const uint32_t end(bam_record.HasQueryEnd() ? bam_record.QueryEnd() : bam_record.Sequence().length());
+			const uint32_t read_size(start < end ? end - start : start - end);
 			if (a == well_read_size.end()) {
 				if (opt_aggregate && bam_record.HasNumPasses()) {
 					well_read_size[well_id] = read_size * bam_record.NumPasses();

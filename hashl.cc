@@ -5,6 +5,7 @@
 #include "next_prime.h"	// next_prime()
 #include "open_compressed.h"	// pfread()
 #include "write_fork.h"	// pfwrite()
+#include <algorithm>	// fill()
 #include <iomanip>	// setw()
 #include <iostream>	// cerr, cout
 #include <map>		// map<>
@@ -17,7 +18,7 @@
 
 // description beginning of saved file
 
-std::string hashl::boilerplate() const {
+std::string hashl::boilerplate(void) const {
 	std::string s("hashl\n");
 	s += itoa(sizeof(base_type));
 	s += " bytes\n";
@@ -389,7 +390,7 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 
 // for debugging
 
-void hashl::print() const {
+void hashl::print(void) const {
 	int max_offset_width(1), max_key_width(1);
 	for (size_t i(10); i < modulus; i *= 10, ++max_offset_width) { }
 	for (size_t i(10); i < data.size() * sizeof(base_type) * 8; i *= 10, ++max_key_width) { }
@@ -429,21 +430,31 @@ void hashl::get_sequence(const data_offset_type start, const data_offset_type le
 
 // make backup of value_list and zero all values
 
-void hashl::filtering_prep() {
-	value_list_backup.assign(modulus, 0);
-	value_list.swap(value_list_backup);
+void hashl::filtering_prep(const bool keep_filter_values) {
+	if (keep_filter_values) {
+		std::fill(value_list.begin(), value_list.end(), 0);
+	} else {
+		value_list_backup.assign(modulus, 0);
+		value_list.swap(value_list_backup);
+	}
 }
 
 // restore value_list from backup, but set to invalid_value if they get filtered
 
-void hashl::filtering_finish(const hashl::small_value_type min, const hashl::small_value_type max) {
-	for (hash_offset_type i(0); i < modulus; ++i) {
-		if (key_list[i] == invalid_key) {
-		} else if (value_list[i] < min || max < value_list[i]) {
-			value_list[i] = invalid_value;
-		} else {
-			value_list[i] = value_list_backup[i];
+void hashl::filtering_finish(const hashl::small_value_type min, const hashl::small_value_type max, const bool keep_filter_values) {
+	if (keep_filter_values) {	// keep the filtering count values (and screen)
+		for (hash_offset_type i(0); i < modulus; ++i) {
+			if (key_list[i] != invalid_key && (value_list[i] < min || max < value_list[i])) {
+				value_list[i] = invalid_value;
+			}
 		}
+	} else {		// restore the original values (and screen)
+		value_list.swap(value_list_backup);
+		for (hash_offset_type i(0); i < modulus; ++i) {
+			if (key_list[i] != invalid_key && (value_list_backup[i] < min || max < value_list_backup[i])) {
+				value_list[i] = invalid_value;
+			}
+		}
+		value_list_backup.clear();
 	}
-	value_list_backup.clear();
 }

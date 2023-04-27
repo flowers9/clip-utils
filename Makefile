@@ -26,7 +26,17 @@ endif
 
 ifeq ($(OS), Linux)
 DEBUG += -O3 -pthread -mfpmath=sse -march=native -flto -fno-fat-lto-objects -fno-builtin -mmmx -msse -msse2 -mssse3 -msse4.1 -msse4.2 -mpopcnt -mfxsr
+ifeq ($(HOST), pc23-gsc)
+# more recent pacbio libraries need newer c++, as well as includes and libraries
+CPPFLAGS += -std=c++17
+PACBIO_INCLUDES = -I./pbbam-2.1.0/include -I./pbcopper-2.0.0/include
+# need to put -lpbcopper before -lpbbam, or it won't find the library at run time
+PACBIO_LIBS = -L/home/smrtlink_beta/current/bundles/smrttools/current/private/pacbio/pbbam/lib -L/home/smrtlink_beta/current/bundles/smrttools/current/private/pacbio/pbcopper/lib -Wl,-R/home/smrtlink_beta/current/bundles/smrttools/current/private/pacbio/pbbam/lib -Wl,-R/home/smrtlink_beta/current/bundles/smrttools/current/private/pacbio/pbcopper/lib -lpbcopper -lpbbam
+else
 CPPFLAGS += -std=c++11
+PACBIO_INCLUDES = -I/home/raid2/LINUXOPT/miniconda2a/include
+PACBIO_LIBS = -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam -lhts
+endif
 endif
 
 obj/%.o: %.cc
@@ -169,71 +179,69 @@ bin/mask_repeats_hashz: obj/breakup_line.o obj/open_compressed.o obj/get_name.o 
 bin/histogram_hashz: obj/open_compressed.o obj/get_name.o obj/hashz.o obj/hist_lib_hashz.o obj/histogram_hashz.o obj/next_prime.o obj/pattern.o obj/read.o obj/read_lib.o obj/time_used.o obj/breakup_line.o obj/strtostr.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) -lgmp
 
-# some of the libraries require c++11/gnu++11
-
 bin/barcode_separation: obj/barcode_separation.o obj/breakup_line.o obj/open_compressed.o obj/strtostr.o obj/write_fork.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 depend/split_bam.d: split_bam.cc
-	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
+	$(CXX) -MM $(CPPFLAGS) $(CXXFLAGS) $(PACBIO_INCLUDES) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
 obj/split_bam.o: split_bam.cc
-	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include -o $@ $<
+	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $(PACBIO_INCLUDES) -o $@ $<
 bin/split_bam: obj/split_bam.o
-	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) $(PACBIO_LIBS)
 
 depend/filter_bam.d: filter_bam.cc
-	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
+	$(CXX) -MM $(CPPFLAGS) $(CXXFLAGS) $(PACBIO_INCLUDES) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
 obj/filter_bam.o: filter_bam.cc
-	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include -o $@ $<
+	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $(PACBIO_INCLUDES) -o $@ $<
 bin/filter_bam: obj/filter_bam.o obj/open_compressed.o obj/breakup_line.o obj/strtostr.o
-	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) $(PACBIO_LIBS)
 
 depend/extract_good_read_names.d: extract_good_read_names.cc
-	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
+	$(CXX) -MM $(CPPFLAGS) $(CXXFLAGS) $(PACBIO_INCLUDES) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
 obj/extract_good_read_names.o: extract_good_read_names.cc
-	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include -o $@ $<
+	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $(PACBIO_INCLUDES) -o $@ $<
 bin/extract_good_read_names: obj/extract_good_read_names.o
-	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) $(PACBIO_LIBS)
 
 depend/filter_bam_alignments.d: filter_bam_alignments.cc
-	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
+	$(CXX) -MM $(CPPFLAGS) $(CXXFLAGS) $(PACBIO_INCLUDES) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
 obj/filter_bam_alignments.o: filter_bam_alignments.cc
-	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include -o $@ $<
+	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $(PACBIO_INCLUDES) -o $@ $<
 bin/filter_bam_alignments: obj/filter_bam_alignments.o
-	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) $(PACBIO_LIBS)
 
 depend/pacbio_read_stats.d: pacbio_read_stats.cc
-	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
+	$(CXX) -MM $(CPPFLAGS) $(CXXFLAGS) $(PACBIO_INCLUDES) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
 obj/pacbio_read_stats.o: pacbio_read_stats.cc
-	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include -o $@ $<
+	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $(PACBIO_INCLUDES) -o $@ $<
 bin/pacbio_read_stats: obj/pacbio_read_stats.o obj/breakup_line.o obj/open_compressed.o obj/pretty_print.o obj/strtostr.o
-	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam -lhts
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) $(PACBIO_LIBS)
 
 depend/add_passes.d: add_passes.cc
-	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
+	$(CXX) -MM $(CPPFLAGS) $(CXXFLAGS) $(PACBIO_INCLUDES) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
 obj/add_passes.o: add_passes.cc
-	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include -o $@ $<
+	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $(PACBIO_INCLUDES) -o $@ $<
 bin/add_passes: obj/add_passes.o obj/open_compressed.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o
-	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam -lhts
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) $(PACBIO_LIBS)
 
 depend/add_quality.d: add_quality.cc
-	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
+	$(CXX) -MM $(CPPFLAGS) $(CXXFLAGS) $(PACBIO_INCLUDES) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
 obj/add_quality.o: add_quality.cc
-	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include -o $@ $<
+	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $(PACBIO_INCLUDES) -o $@ $<
 bin/add_quality: obj/add_quality.o obj/open_compressed.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o
-	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam -lhts
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) $(PACBIO_LIBS)
 
 depend/extract_bam_well_sizes.d: extract_bam_well_sizes.cc
-	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
+	$(CXX) -MM $(CPPFLAGS) $(CXXFLAGS) $(PACBIO_INCLUDES) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
 obj/extract_bam_well_sizes.o: extract_bam_well_sizes.cc
-	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -I/home/raid2/LINUXOPT/miniconda2a/include -o $@ $<
+	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $(PACBIO_INCLUDES) -o $@ $<
 bin/extract_bam_well_sizes: obj/extract_bam_well_sizes.o
-	$(CXX) -std=gnu++11 $(LDFLAGS) -o $@ $^ $(LDLIBS) -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam -lhts
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) $(PACBIO_LIBS)
 
 depend/find_kmers.d: find_kmers.cc
-	$(CXX) -std=gnu++11 -MM $(CPPFLAGS) $(CXXFLAGS) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
+	$(CXX) -MM $(CPPFLAGS) $(CXXFLAGS) $< | sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' > $@
 obj/find_kmers.o: find_kmers.cc
-	$(CXX) -std=gnu++11 -c $(CPPFLAGS) $(CXXFLAGS) -o $@ $<
+	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) -o $@ $<
 bin/find_kmers: obj/find_kmers.o obj/open_compressed.o obj/hashp.o obj/next_prime.o obj/breakup_line.o obj/strtostr.o obj/time_used.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) -lpthread
 

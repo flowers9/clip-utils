@@ -21,6 +21,7 @@
 // kmers outside the given ranges as invalid
 
 static bool opt_feedback;
+static int opt_library_counts;
 static int opt_max_kmer_frequency;
 static int opt_min_kmer_frequency;
 static size_t opt_mer_length;
@@ -33,6 +34,8 @@ static void print_usage() {
 		"    -h    print this help\n"
 		"    -f ## min kmer frequency [1]\n"
 		"    -F ## max kmer frequency [" << static_cast<unsigned int>(hashl::max_small_value) << "]\n"
+		"    -l    replace the hash values (reference counts) with the library counts\n"
+		"          (requires the -o option)\n"
 		"    -o ## output file for resulting hash [overwrite original hash]\n"
 		"    -q    don't print status updates\n"
 		"    -V    print version\n";
@@ -41,10 +44,11 @@ static void print_usage() {
 
 static void get_opts(const int argc, char * const * const argv) {
 	opt_feedback = 1;
+	opt_library_counts = 0;
 	opt_max_kmer_frequency = hashl::max_small_value;
 	opt_min_kmer_frequency = 1;
 	int c;
-	while ((c = getopt(argc, argv, "hf:F:o:qV")) != EOF) {
+	while ((c = getopt(argc, argv, "hf:F:lo:qV")) != EOF) {
 		switch (c) {
 		    case 'h':
 			print_usage();
@@ -54,6 +58,9 @@ static void get_opts(const int argc, char * const * const argv) {
 			break;
 		    case 'F':
 			std::istringstream(optarg) >> opt_max_kmer_frequency;
+			break;
+		    case 'l':
+			opt_library_counts = 1;
 			break;
 		    case 'o':
 			opt_output_hash = optarg;
@@ -80,6 +87,9 @@ static void get_opts(const int argc, char * const * const argv) {
 		exit(1);
 	} else if (static_cast<unsigned int>(opt_max_kmer_frequency) > hashl::max_small_value) {
 		std::cerr << "Error: -F greater than " << static_cast<unsigned int>(hashl::max_small_value) << '\n';
+		exit(1);
+	} else if (opt_library_counts && opt_output_hash.empty()) {
+		std::cerr << "Error: -l option requires a -o value\n";
 		exit(1);
 	}
 	if (optind + 2 > argc) {
@@ -254,7 +264,7 @@ int main(const int argc, char * const * const argv) {
 	for (int i(optind + 1); i < argc; ++i) {
 		process_library(reference_kmers, argv[i]);
 	}
-	reference_kmers.filtering_finish(opt_min_kmer_frequency, opt_max_kmer_frequency);
+	reference_kmers.filtering_finish(opt_min_kmer_frequency, opt_max_kmer_frequency, opt_library_counts);
 	if (opt_feedback) {
 		std::cerr << time(0) << ": saving reference hash\n";
 	}

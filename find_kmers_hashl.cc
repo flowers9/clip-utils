@@ -147,8 +147,8 @@ static void check_reference(const hashl &lookup, const hashl &reference, std::ve
 	for (; a != end_a; ++a) {
 		if (*a && *a != hashl::invalid_value) {
 			a.key(key);
-			// .value() returns 0 if key not found
 			const std::pair<hashl::data_offset_type, hashl::small_value_type> x(reference.entry(key));
+			// .second (the value) is 0 if the key is not found
 			if (x.second) {
 				add_range(lookup_map, x.first, hits);
 			}
