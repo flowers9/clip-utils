@@ -5,7 +5,6 @@
 #include "next_prime.h"	// next_prime()
 #include "open_compressed.h"	// pfread()
 #include "write_fork.h"	// pfwrite()
-#include <algorithm>	// fill()
 #include <iomanip>	// setw()
 #include <iostream>	// cerr, cout
 #include <map>		// map<>
@@ -428,27 +427,32 @@ void hashl::get_sequence(const data_offset_type start, const data_offset_type le
 	}
 }
 
-// make backup of value_list and zero all values
-
-void hashl::filtering_prep(const bool keep_filter_values) {
-	if (keep_filter_values) {
-		std::fill(value_list.begin(), value_list.end(), 0);
-	} else {
+void hashl::filtering_prep(const bool backup_values) {
+	if (backup_values) {
+		// make backup of value_list and zero all values
 		value_list_backup.assign(modulus, 0);
 		value_list.swap(value_list_backup);
+	} else {
+		// zero values, but keep invalid_value
+		for (hash_offset_type i(0); i < modulus; ++i) {
+			if (value_list[i] && value_list[i] != invalid_value) {
+				value_list[i] = 0;
+			}
+		}
 	}
 }
 
-// restore value_list from backup, but set to invalid_value if they get filtered
+// set values to invalid_value if the new values don't fall between min and max
+// TODO: add restore_values parameter and double check versus existence of backup vector
 
-void hashl::filtering_finish(const hashl::small_value_type min, const hashl::small_value_type max, const bool keep_filter_values) {
-	if (keep_filter_values) {	// keep the filtering count values (and screen)
+void hashl::filtering_finish(const hashl::small_value_type min, const hashl::small_value_type max) {
+	if (value_list_backup.empty()) {
 		for (hash_offset_type i(0); i < modulus; ++i) {
 			if (key_list[i] != invalid_key && (value_list[i] < min || max < value_list[i])) {
 				value_list[i] = invalid_value;
 			}
 		}
-	} else {		// restore the original values (and screen)
+	} else {
 		value_list.swap(value_list_backup);
 		for (hash_offset_type i(0); i < modulus; ++i) {
 			if (key_list[i] != invalid_key && (value_list_backup[i] < min || max < value_list_backup[i])) {

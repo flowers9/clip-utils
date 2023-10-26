@@ -6,6 +6,7 @@
 #include "open_compressed.h"	// close_compressed(), find_suffix(), open_compressed(), pfgets()
 #include "pbbam/BamReader.h"	// BamReader
 #include "pbbam/BamRecord.h"	// BamRecord
+#include "pbbam/BamRecordImpl.h"	// BamRecordImpl
 #include "pretty_print.h"	// pretty_print()
 #include "version.h"	// VERSION
 #include <algorithm>	// max(), sort()
@@ -432,8 +433,9 @@ static void read_reads_bam(const std::string &bam_file) {
 		current.save_length();
 		const size_t id_offset(get_id_start(id));
 		const size_t start(r.HasQueryStart() ? r.QueryStart() : 0);
-		// using Sequence().length() is slow, but thems the breaks
-		const size_t end(r.HasQueryEnd() ? r.QueryEnd() : r.Sequence().length());
+		// NOTE - Impl().SequenceLength() is effectively a deprecated
+		// interface, but using Sequence().length() is slower
+		const size_t end(r.HasQueryEnd() ? r.QueryEnd() : r.Impl().SequenceLength());
 		const size_t read_size(start < end ? end - start : start - end);
 		current.set_seq(id, read_size, id_offset);
 	}

@@ -10,6 +10,7 @@
 #include <stdio.h>	/* fprintf(), stderr */
 #include <string>	/* string */
 #include <sys/types.h>	/* size_t */
+#include <ctime>	// time()
 
 Pattern opt_include;
 bool opt_feedback = 1;

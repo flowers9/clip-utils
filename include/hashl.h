@@ -266,9 +266,9 @@ class hashl {
 	bool add(const hashl &, small_value_type min_cutoff = 0, small_value_type max_cutoff = 1);
 	void print(void) const;
 	// save and zero value_list
-	void filtering_prep(bool keep_filter_values = 0);
+	void filtering_prep(bool backup_values = 1);
 	// restore value_list for values in min-max, set to invalid_value for rest
-	void filtering_finish(small_value_type min, small_value_type max, bool keep_filter_values = 0);
+	void filtering_finish(small_value_type min, small_value_type max);
 };
 
 #endif // !_HASHL_H

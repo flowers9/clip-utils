@@ -7,6 +7,7 @@
 
 #include "pbbam/BamReader.h"	// BamReader
 #include "pbbam/BamRecord.h"	// BamRecord
+#include "pbbam/BamRecordImpl.h"	// BamRecordImpl
 #include <exception>	// exception
 #include <getopt.h>	// getopt(), optind
 #include <iostream>	// cerr, cout
@@ -82,10 +83,9 @@ static void read_bam(const char * const file, std::map<uint32_t, uint32_t> &well
 				++well_read_size[well_id];
 			}
 		} else {	// using read size (max or total)
-			// according to the docs, the libraries are supposed to do this
-			// check on their own, but apparently not
 			const uint32_t start(bam_record.HasQueryStart() ? bam_record.QueryStart() : 0);
-			const uint32_t end(bam_record.HasQueryEnd() ? bam_record.QueryEnd() : bam_record.Sequence().length());
+			// Note - going through Impl() is effectively deprecated
+			const uint32_t end(bam_record.HasQueryEnd() ? bam_record.QueryEnd() : bam_record.Impl().SequenceLength());
 			const uint32_t read_size(start < end ? end - start : start - end);
 			if (a == well_read_size.end()) {
 				if (opt_aggregate && bam_record.HasNumPasses()) {

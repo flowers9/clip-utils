@@ -13,8 +13,8 @@
 #include <vector>	// vector<>
 
 // combine a set of reference hashes (and save this, if asked) and then
-// go through a target's hash seeing which kmers match; multiple targets
-// are treated as one big target
+// go through a target's hash seeing which kmers match; multiple target
+// files are treated as one big target file
 
 static bool opt_print_histogram;
 static int opt_fastq_max_kmer_frequency;

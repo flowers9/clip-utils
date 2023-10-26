@@ -24,7 +24,7 @@ static bool opt_feedback;
 static int opt_library_counts;
 static int opt_max_kmer_frequency;
 static int opt_min_kmer_frequency;
-static size_t opt_mer_length;
+static size_t opt_mer_length;		// derived from reference hash, not via an option
 static std::string opt_output_hash;
 
 static void print_usage() {
@@ -76,10 +76,7 @@ static void get_opts(const int argc, char * const * const argv) {
 			print_usage();
 		}
 	}
-	if (opt_min_kmer_frequency < 1) {
-		std::cerr << "Error: -f less than one\n";
-		exit(1);
-	} else if (static_cast<unsigned int>(opt_min_kmer_frequency) > hashl::max_small_value) {
+	if (static_cast<unsigned int>(opt_min_kmer_frequency) > hashl::max_small_value) {
 		std::cerr << "Error: -f greater than " << static_cast<unsigned int>(hashl::max_small_value) << '\n';
 		exit(1);
 	} else if (opt_min_kmer_frequency > opt_max_kmer_frequency) {
@@ -259,12 +256,12 @@ int main(const int argc, char * const * const argv) {
 	}
 	reference_kmers.init_from_file(fd);
 	close_compressed(fd);
-	reference_kmers.filtering_prep();
+	reference_kmers.filtering_prep(!opt_library_counts);
 	opt_mer_length = reference_kmers.bits() / 2;
 	for (int i(optind + 1); i < argc; ++i) {
 		process_library(reference_kmers, argv[i]);
 	}
-	reference_kmers.filtering_finish(opt_min_kmer_frequency, opt_max_kmer_frequency, opt_library_counts);
+	reference_kmers.filtering_finish(opt_min_kmer_frequency, opt_max_kmer_frequency);
 	if (opt_feedback) {
 		std::cerr << time(0) << ": saving reference hash\n";
 	}
