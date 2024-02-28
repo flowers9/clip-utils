@@ -214,7 +214,7 @@ static void expand_included_files(std::list<std::string> &files) {
 				errno = 0;
 				struct dirent * const d(readdir(dir));
 				if (d) {
-					if (d->d_name && d->d_name[0] && d->d_name[0] != '.') {
+					if (d->d_name[0] && d->d_name[0] != '.') {
 						files.insert(a, *c + "/" + d->d_name);
 					}
 				} else if (errno) {
