@@ -119,7 +119,7 @@ static unsigned long count_gc(const hashl::key_type &key) {
 static void print_mer_histogram(std::ostream &fp_out, const hashl &mer_list) {
 	std::map<hashl::value_type, unsigned long> counts;
 	std::map<hashl::value_type, unsigned long> gc_counts;
-	hashl::key_type key(mer_list), comp_key(mer_list);
+	hashl::key_type key(mer_list);
 	hashl::const_iterator a(mer_list.cbegin());
 	const hashl::const_iterator end_a(mer_list.cend());
 	for (; a != end_a; ++a) {

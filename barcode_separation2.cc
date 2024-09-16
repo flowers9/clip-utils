@@ -1,5 +1,6 @@
 // using a barcode lookup table, separates reads in paired (r1/r2)
-// fastq files into separate paired fastq files by sequence barcodes
+// fastq files into separate paired fastq files by sequence barcodes;
+// r1 barcodes are only matched against the 10 bp start of the sequence
 
 #include "breakup_line.h"	// breakup_line()
 #include "open_compressed.h"	// close_compressed(), open_compressed(), pfgets()

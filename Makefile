@@ -26,17 +26,28 @@ endif
 
 ifeq ($(OS), Linux)
 DEBUG += -O3 -pthread -mfpmath=sse -march=native -flto -fno-fat-lto-objects -fno-builtin -mmmx -msse -msse2 -mssse3 -msse4.1 -msse4.2 -mpopcnt -mfxsr
-ifeq ($(HOST), pc23-gsc)
+#ifeq ($(HOST), pc23-gsc)
 # more recent pacbio libraries need newer c++, as well as includes and libraries
 CPPFLAGS += -std=c++17
-PACBIO_INCLUDES = -I./pbbam-2.1.0/include -I./pbcopper-2.0.0/include
+PACBIO_INCLUDES = -I./pbbam-2.1.0/include -I./pbcopper-2.0.0/include -I./htslib-1.17
 # need to put -lpbcopper before -lpbbam, or it won't find the library at run time
-PACBIO_LIBS = -L/home/smrtlink_beta/current/bundles/smrttools/current/private/pacbio/pbbam/lib -L/home/smrtlink_beta/current/bundles/smrttools/current/private/pacbio/pbcopper/lib -Wl,-R/home/smrtlink_beta/current/bundles/smrttools/current/private/pacbio/pbbam/lib -Wl,-R/home/smrtlink_beta/current/bundles/smrttools/current/private/pacbio/pbcopper/lib -lpbcopper -lpbbam
-else
-CPPFLAGS += -std=c++11
-PACBIO_INCLUDES = -I/home/raid2/LINUXOPT/miniconda2a/include
-PACBIO_LIBS = -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam -lhts
-endif
+# needs wrapper script to set LD_LIBRARY_PATH (for the three paths below),
+# or it won't find htslib
+
+PACBIO_LIBS = \
+	-Wl,-rpath=/home/smrtlink_f8/current/bundles/smrttools/current/private/pacbio/pbbam/lib \
+	-Wl,-rpath=/home/smrtlink_f8/current/bundles/smrttools/current/private/pacbio/pbcopper/lib \
+	-Wl,-rpath=/home/smrtlink_f8/current/bundles/smrttools/current/private/thirdparty/htslib/htslib_1.17/lib \
+	-L/home/smrtlink_f8/current/bundles/smrttools/current/private/pacbio/pbbam/lib \
+	-L/home/smrtlink_f8/current/bundles/smrttools/current/private/pacbio/pbcopper/lib \
+	-L/home/smrtlink_f8/current/bundles/smrttools/current/private/thirdparty/htslib/htslib_1.17/lib \
+	-lpbcopper -lpbbam
+
+#else
+#CPPFLAGS += -std=c++11
+#PACBIO_INCLUDES = -I/home/raid2/LINUXOPT/miniconda2a/include
+#PACBIO_LIBS = -L/home/raid2/LINUXOPT/miniconda2a/lib -Wl,-R/home/raid2/LINUXOPT/miniconda2a/lib -lpbbam -lhts
+#endif
 endif
 
 obj/%.o: %.cc
@@ -44,7 +55,7 @@ obj/%.o: %.cc
 
 .PHONY: all
 
-all: bin/clip bin/histogram_hash bin/library_stats bin/mask_repeats_hash bin/qc_stats1 bin/qc_stats2 bin/targets bin/read_stats bin/read_histogram bin/phred_hist bin/parse_output bin/repair_sequence2 bin/compress_blat bin/repair_sequence3 bin/mask_repeats_hashn bin/histogram_hashn bin/check_barcodes bin/screen_blat bin/filter_blat bin/parse_output2 bin/screen_pairs bin/arachne_create_xml bin/extract_seq_and_qual bin/split_fasta bin/copy_dbs bin/print_hash bin/print_hashn bin/screen_reads bin/pacbio_read_stats bin/sort_blast bin/add_passes bin/find_kmers bin/add_quality bin/interleave bin/tee bin/chris_prep bin/kmer_matching_setup bin/kmer_matching bin/extract_bam_well_sizes bin/barcode_separation bin/filter_bam_alignments bin/split_bam bin/filter_bam bin/extract_good_read_names bin/dot_hash bin/dot_hashn bin/histogram_hashl bin/screen_kmers_by_ref bin/find_kmers_hashl bin/print_hashl bin/screen_kmers_by_lib
+all: bin/clip bin/histogram_hash bin/library_stats bin/mask_repeats_hash bin/qc_stats1 bin/qc_stats2 bin/targets bin/read_stats bin/read_histogram bin/phred_hist bin/parse_output bin/repair_sequence2 bin/compress_blat bin/repair_sequence3 bin/mask_repeats_hashn bin/histogram_hashn bin/check_barcodes bin/screen_blat bin/filter_blat bin/parse_output2 bin/screen_pairs bin/arachne_create_xml bin/extract_seq_and_qual bin/split_fasta bin/copy_dbs bin/print_hash bin/print_hashn bin/screen_reads bin/pacbio_read_stats bin/sort_blast bin/add_passes bin/find_kmers bin/add_quality bin/interleave bin/tee bin/chris_prep bin/kmer_matching_setup bin/kmer_matching bin/extract_bam_well_sizes bin/barcode_separation bin/filter_bam_alignments bin/split_bam bin/filter_bam bin/extract_good_read_names bin/dot_hash bin/dot_hashn bin/histogram_hashl bin/screen_kmers_by_ref bin/find_kmers_hashl bin/print_hashl bin/screen_kmers_by_lib bin/barcode_separation2 bin/barcode_separation3
 
 bin/chris_prep: obj/chris_prep.o obj/breakup_line.o obj/open_compressed.o obj/strtostr.o obj/write_fork.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
@@ -183,6 +194,9 @@ bin/barcode_separation: obj/barcode_separation.o obj/breakup_line.o obj/open_com
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 bin/barcode_separation2: obj/barcode_separation2.o obj/breakup_line.o obj/open_compressed.o obj/strtostr.o obj/write_fork.o
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+bin/barcode_separation3: obj/barcode_separation3.o obj/breakup_line.o obj/open_compressed.o obj/strtostr.o obj/write_fork.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 depend/split_bam.d: split_bam.cc

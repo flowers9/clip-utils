@@ -93,7 +93,7 @@ static unsigned long count_gc(const hashn::key_type_base &key) {
 static void print_mer_histogram(hashn &mer_list) {
 	std::map<hashn::value_type, unsigned long> counts;
 	std::map<hashn::value_type, unsigned long> gc_counts;
-	hashn::key_type comp_key(mer_list);
+	//hashn::key_type comp_key(mer_list);
 	hashn::const_iterator a(mer_list.begin());
 	const hashn::const_iterator end_a(mer_list.end());
 	for (; a != end_a; ++a) {

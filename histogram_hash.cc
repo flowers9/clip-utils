@@ -138,17 +138,17 @@ static void print_mer_histogram(FILE *fp_out, hash &mer_list) {
 	hash::const_iterator a(mer_list.begin());
 	const hash::const_iterator end_a(mer_list.end());
 	for (; a != end_a; ++a) {
-		if (a.key == reverse_key(a.key)) {
-			counts[a.value] += 2;
-			if (opt_print_gc) {
-				gc_counts[a.value] += 2 * count_gc(a.key);
-			}
-		} else {
+		//if (a.key == reverse_key(a.key)) {
+		//	counts[a.value] += 2;
+		//	if (opt_print_gc) {
+		//		gc_counts[a.value] += 2 * count_gc(a.key);
+		//	}
+		//} else {
 			++counts[a.value];
 			if (opt_print_gc) {
 				gc_counts[a.value] += count_gc(a.key);
 			}
-		}
+		//}
 	}
 	std::map<hash::value_type, unsigned long>::const_iterator c(counts.begin());
 	const std::map<hash::value_type, unsigned long>::const_iterator end_c(counts.end());

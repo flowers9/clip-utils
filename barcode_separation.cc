@@ -1,7 +1,8 @@
 // using a barcode lookup table, separates reads in a fastq file into
 // separate fastq files by sequence barcodes
 
-// XXX - does not search for revcomp matches, does not check for multiple matches
+// XXX - does not search for revcomp matches
+// XXX - could add option to toggle checking for multiple matches
 
 #include "breakup_line.h"	// breakup_line()
 #include "open_compressed.h"	// close_compressed(), open_compressed(), pfgets()
@@ -36,8 +37,34 @@ class LocalException : public std::exception {
 
 // all the 5 prime ends (and associated output files) for a given 3 prime barcode
 class BarcodeSubmap {
+    private:
+	static unsigned char comp(unsigned char c) {
+		switch (c) {
+		    case 'A':
+			return 'T';
+		    case 'C':
+			return 'G';
+		    case 'G':
+			return 'C';
+		    case 'T':
+			return 'A';
+		    default:
+			return c;
+		}
+	}
     public:
-	void add(const std::string &name, const std::string &p5_bc) {
+	void add(const std::string &name, std::string &p5_bc) {
+		// revcomp 5 prime barcodes
+		std::string::iterator b = p5_bc.begin();
+		std::string::iterator c = p5_bc.end() - 1;
+		for (; b < c; ++b, --c) {
+			const unsigned char d = comp(*b);
+			*b = comp(*c);
+			*c = d;
+		}
+		if (b == c) {
+			*b = comp(*b);
+		}
 		if (p5_fds_.find(p5_bc) != p5_fds_.end()) {
 			throw LocalException("duplicate 5' barcode (" + name + "): " + p5_bc);
 		}
@@ -110,8 +137,12 @@ class FastqEntry {
 		}
 	}
 	// look for a 5 prime barcode following the 3 prime barcode
-	bool search_5p(const std::regex &re, const std::smatch &p3_match, std::smatch &p5_match) const {
+	bool search_5p(const std::regex &re, std::smatch &p5_match, const std::smatch &p3_match) const {
 		return std::regex_search(p3_match[0].second, seq_.cend(), p5_match, re);
+	}
+	// continue looking for other 5 prime matches
+	bool search_5p(const std::regex &re, std::smatch &p5_match) const {
+		return std::regex_search(p5_match[0].first + 1, seq_.cend(), p5_match, re);
 	}
     private:
 	std::string header_, seq_, qual_header_, qual_;
@@ -164,26 +195,40 @@ static void process_sequence(const std::string &reads, const std::map<std::strin
 	if (nomatch_fd == -1) {
 		throw LocalException("could not open no_match.fastq.gz");
 	}
+	const int multimatch_fd = write_fork(gzip_args, "multi_match.fastq.gz");
+	if (multimatch_fd == -1) {
+		throw LocalException("could not open multi_match.fastq.gz");
+	}
+
 	FastqEntry entry;			// read buffer
 	std::smatch p3_match, p5_match;		// match buffers
+	std::vector<int> matches;
 	while (entry.read(reads_fd)) {
+		matches.clear();
 		bool first = 1;
 		while (entry.search_3p(p3_re, first, p3_match)) {
 			const BarcodeSubmap &p3_entry = barcode_dict.at(p3_match.str());
-			if (entry.search_5p(p3_entry.p5_re(), p3_match, p5_match)) {
-				entry.write(p3_entry.output_fd(p5_match.str()));
-				break;
+			if (entry.search_5p(p3_entry.p5_re(), p5_match, p3_match)) {
+				matches.push_back(p3_entry.output_fd(p5_match.str()));
+				while (entry.search_5p(p3_entry.p5_re(), p5_match)) {
+					matches.push_back(p3_entry.output_fd(p5_match.str()));
+				}
 			}
 			first = 0;
 		}
 		// could not find a matched pair of barcodes
-		if (p3_match.empty() || p5_match.empty()) {
+		if (matches.size() == 1) {
+			entry.write(matches[0]);
+		} else if (matches.size() == 0) {
 			entry.write(nomatch_fd);
+		} else {
+			entry.write(multimatch_fd);
 		}
 	}
 	// close input/output files
 	close_compressed(reads_fd);
 	close_fork(nomatch_fd);
+	close_fork(multimatch_fd);
 	for (const auto &a : output_fds) {
 		close_fork(a.second);
 	}

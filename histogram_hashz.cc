@@ -49,19 +49,19 @@ static void print_mer_frequency(const hashz &mer_list) {
 
 static void print_mer_histogram(const hashz &mer_list) {
 	std::map<unsigned long, unsigned long> counts;
-	hashz::key_type comp_key;
-	mpz_init2(comp_key, opt_mer_length * 2);
+	//hashz::key_type comp_key;
+	//mpz_init2(comp_key, opt_mer_length * 2);
 	hashz::const_iterator a = mer_list.begin();
 	hashz::const_iterator end_a = mer_list.end();
 	for (; a != end_a; ++a) {
-		reverse_key(a.key, comp_key);
-		if (mpz_cmp(a.key, comp_key) == 0) {
-			counts[a.value] += 2;
-		} else {
+		//reverse_key(a.key, comp_key);
+		//if (mpz_cmp(a.key, comp_key) == 0) {
+		//	counts[a.value] += 2;
+		//} else {
 			++counts[a.value];
-		}
+		//}
 	}
-	mpz_clear(comp_key);
+	//mpz_clear(comp_key);
 	std::map<unsigned long, unsigned long>::const_iterator c = counts.begin();
 	std::map<unsigned long, unsigned long>::const_iterator end_c = counts.end();
 	double total = 0;
