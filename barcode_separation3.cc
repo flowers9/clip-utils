@@ -59,7 +59,6 @@ class BarcodeSubmap {
 			}
 			fd_list.push_back(std::make_pair(fd1, fd2));
 			bc2_lookup_[bc2] = barcode_lookup[name] = fd_list.size() - 1;
-
 		} else {
 			bc2_lookup_[bc2] = a->second;
 		}
