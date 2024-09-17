@@ -15,13 +15,16 @@
 #include <utility>	// make_pair(), pair<>
 #include <vector>	// vector<>
 
+// check for more than one barcode pair matching each sequence, and sort them separately
 // #define CHECK_MULTI
+// check beyond start of sequence for matches
+// #define FULL_SEQ
 
-const std::list<std::string> gzip_args({"gzip", "-c"});	// for write_fork()
-const std::string r1_suffix(".R1.fastq.gz");		// for output filenames
-const std::string r2_suffix(".R2.fastq.gz");
+const std::list<std::string> gzip_args = {"gzip", "-c"};	// for write_fork()
+const std::string r1_suffix = ".R1.fastq.gz";			// for output filenames
+const std::string r2_suffix = ".R2.fastq.gz";
 // store output fds by barcode name in case multiple barcode pairs have the same name
-std::map<std::string, size_t> barcode_lookup;		// [barcode_name] = fd_list offset
+std::map<std::string, size_t> barcode_lookup;			// [barcode_name] = fd_list offset
 std::vector<std::pair<int, int>> fd_list;
 
 class LocalException : public std::exception {
@@ -98,6 +101,9 @@ class FastqEntry {
 		if (pfgets(fd, qual_) == -1) {
 			throw LocalException("read missing quality: " + header_);
 		}
+#ifndef FULL_SEQ
+		target_ = seq_.substr(0, 10);
+#endif
 		return 1;
 	}
 	void write(const int fd) const {	// fd needs to be from write_fork()
@@ -110,6 +116,7 @@ class FastqEntry {
 		pfputs(fd, qual_);
 		pfputc(fd, '\n');
 	}
+#ifdef FULL_SEQ
 	bool search(const std::regex &re, const bool first, std::smatch &match) const {
 		if (first) {	// start at the beginning
 			return std::regex_search(seq_, match, re);
@@ -117,11 +124,19 @@ class FastqEntry {
 			return std::regex_search(match[0].first + 1, seq_.cend(), match, re);
 		}
 	}
+#else
+	bool search(const std::regex &re, std::smatch &match) const {
+		return std::regex_match(target_, match, re);
+	}
+#endif
 	const std::string header() const {
 		return header_;
 	}
     private:
 	std::string header_, seq_, qual_header_, qual_;
+#ifndef FULL_SEQ
+	std::string target_;
+#endif
 };
 
 static void print_usage() {
@@ -233,8 +248,8 @@ static void process_sequence(const std::string &reads_1, const std::string &read
 		}
 	}
 #else
-	while (r1_entry.read(r1_fd) && r2_entry.read(r2_fd)) {
-		bool matched = 0;
+#ifdef FULL_SEQ
+	NEXT: while (r1_entry.read(r1_fd) && r2_entry.read(r2_fd)) {
 		bool first = 1;
 		while (r1_entry.search(bc1_re, first, r1_match)) {
 			const BarcodeSubmap &bc1 = barcode_dict.at(r1_match.str());
@@ -242,16 +257,28 @@ static void process_sequence(const std::string &reads_1, const std::string &read
 				const std::pair<int, int> &output_fds = fd_list[bc1.output_offset(r2_match.str())];
 				r1_entry.write(output_fds.first);
 				r2_entry.write(output_fds.second);
-				matched = 1;
-				break;
+				goto NEXT;
 			}
 			first = 0;
 		}
-		if (!matched) {
-			r1_entry.write(nm1_fd);
-			r2_entry.write(nm2_fd);
-		}
+		r1_entry.write(nm1_fd);
+		r2_entry.write(nm2_fd);
 	}
+#else
+	while (r1_entry.read(r1_fd) && r2_entry.read(r2_fd)) {
+		if (r1_entry.search(bc1_re, r1_match)) {
+			const BarcodeSubmap &bc1 = barcode_dict.at(r1_match.str());
+			if (r2_entry.search(bc1.bc2_re(), r2_match)) {
+				const std::pair<int, int> &output_fds = fd_list[bc1.output_offset(r2_match.str())];
+				r1_entry.write(output_fds.first);
+				r2_entry.write(output_fds.second);
+				continue;
+			}
+		}
+		r1_entry.write(nm1_fd);
+		r2_entry.write(nm2_fd);
+	}
+#endif
 #endif
 	// close input/output files
 	close_compressed(r1_fd);
