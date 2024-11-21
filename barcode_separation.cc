@@ -6,7 +6,7 @@
 
 #include "breakup_line.h"	// breakup_line()
 #include "open_compressed.h"	// close_compressed(), open_compressed(), pfgets()
-#include "write_fork.h"		// pfputc(), pfputs(), write_fork()
+#include "write_fork.h"		// close_fork(), close_fork_wait(), pfputc(), pfputs(), write_fork()
 #include <exception>	// exception
 #include <iostream>	// cerr
 #include <list>		// list<>
@@ -199,7 +199,6 @@ static void process_sequence(const std::string &reads, const std::map<std::strin
 	if (multimatch_fd == -1) {
 		throw LocalException("could not open multi_match.fastq.gz");
 	}
-
 	FastqEntry entry;			// read buffer
 	std::smatch p3_match, p5_match;		// match buffers
 	std::vector<int> matches;
@@ -227,11 +226,11 @@ static void process_sequence(const std::string &reads, const std::map<std::strin
 	}
 	// close input/output files
 	close_compressed(reads_fd);
-	close_fork(nomatch_fd);
 	close_fork(multimatch_fd);
 	for (const auto &a : output_fds) {
 		close_fork(a.second);
 	}
+	close_fork_wait(nomatch_fd);
 }
 
 int main(int argc, char **argv) {

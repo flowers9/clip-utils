@@ -189,13 +189,13 @@ static void process_sequence(const std::string &reads_1, const std::string &read
 	// close input/output files
 	close_compressed(r1_fd);
 	close_compressed(r2_fd);
-	close_fork(nu1_fd);
-	close_fork(nu2_fd);
 	std::map<std::string, BarcodeSubmap>::const_iterator a(barcode_dict.begin());
 	const std::map<std::string, BarcodeSubmap>::const_iterator end_a(barcode_dict.end());
 	for (; a != end_a; ++a) {
 		a->second.close();
 	}
+	close_fork(nu1_fd);
+	close_fork_wait(nu2_fd);
 }
 
 int main(int argc, char **argv) {

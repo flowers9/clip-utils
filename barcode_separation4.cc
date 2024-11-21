@@ -13,7 +13,7 @@
 
 #include "breakup_line.h"	// breakup_line()
 #include "open_compressed.h"	// close_compressed(), open_compressed(), pfgets()
-#include "write_fork.h"		// clsoe_fork, close_fork_wait(), write_fork()
+#include "write_fork.h"		// close_fork, close_fork_wait(), pfputc(), write_fork()
 #include <algorithm>	// transform()
 #include <ctype.h>	// toupper()
 #include <exception>	// exception
