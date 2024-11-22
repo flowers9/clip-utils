@@ -10,7 +10,7 @@
 
 class hashl_metadata {
     public:
-	struct position {		// for doing position lookups
+	struct position {				// for doing position lookups
 		size_t file, read;
 		uint64_t read_start;
 	};
