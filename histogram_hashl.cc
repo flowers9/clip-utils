@@ -437,7 +437,7 @@ static void read_in_files(int argc, char **argv, hashl &mer_list) {
 		// actually read in the file
 		get_read_sizes(argv[i + optind], metadata);
 		// clean up any lose ends
-		metadata.finalize();
+		metadata.finalize_file();
 	}
 	std::vector<hashl::base_type> data;
 	metadata.read_data(data, opt_feedback);

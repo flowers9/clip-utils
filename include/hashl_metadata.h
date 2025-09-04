@@ -21,7 +21,7 @@ class hashl_metadata {
     private:
 	std::vector<std::string> files;
 	std::vector<std::vector<std::string> > reads;	// reads associated with each file
-	// inclusive start, exclusive end		// ranges associated with each read
+	// inclusive start, exclusive end		// ranges associated with each read (non-acgt basepairs create breaks in the read)
 	std::vector<std::vector<std::vector<std::pair<uint64_t, uint64_t> > > > read_ranges;
     public:
 	explicit hashl_metadata(void) { }
@@ -29,7 +29,7 @@ class hashl_metadata {
 	void add_file(const std::string &file_name);	// add new file
 	void add_read(const std::string &read_name);	// add new read at current file
 	void add_read_range(uint64_t, uint64_t);	// add new read range at current read
-	void finalize(void);				// remove last adds if empty
+	void finalize_file(void);			// remove last adds if empty
 	void read_data(std::vector<hashl::base_type> &data_out, bool feedback = 0);
 	void pack(std::vector<char> &) const;		// create blob of our data
 	void unpack(const std::vector<char> &);		// fill our data from blob

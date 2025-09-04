@@ -196,7 +196,7 @@ void hashl_metadata::add_read_range(const uint64_t start, const uint64_t end) {
 	read_ranges.back().back().push_back(std::make_pair(start, end));
 }
 
-void hashl_metadata::finalize() {
+void hashl_metadata::finalize_file() {
 	if (!files.empty()) {
 		// check if last read of last file had any ranges
 		if (read_ranges.back().back().empty()) {
