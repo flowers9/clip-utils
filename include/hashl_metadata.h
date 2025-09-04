@@ -20,8 +20,8 @@ class hashl_metadata {
 	int bit_offset;
     private:
 	std::vector<std::string> files;
-	std::vector<std::vector<std::string> > reads;
-	// inclusive start, exclusive end
+	std::vector<std::vector<std::string> > reads;	// reads associated with each file
+	// inclusive start, exclusive end		// ranges associated with each read
 	std::vector<std::vector<std::vector<std::pair<uint64_t, uint64_t> > > > read_ranges;
     public:
 	explicit hashl_metadata(void) { }

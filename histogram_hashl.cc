@@ -432,8 +432,12 @@ static void read_in_files(int argc, char **argv, hashl &mer_list) {
 		if (opt_feedback) {
 			std::cerr << time(0) << ": Getting read sizes for " << argv[i + optind] << "\n";
 		}
+		// prepare metadata for reading in the file
 		metadata.add_file(argv[i + optind]);
+		// actually read in the file
 		get_read_sizes(argv[i + optind], metadata);
+		// clean up any lose ends
+		metadata.finalize();
 	}
 	std::vector<hashl::base_type> data;
 	metadata.read_data(data, opt_feedback);

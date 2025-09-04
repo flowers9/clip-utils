@@ -182,7 +182,6 @@ std::vector<size_t> hashl_metadata::read_ends() const {
 }
 
 void hashl_metadata::add_file(const std::string &file_name) {
-	finalize();
 	files.push_back(file_name);
 	reads.push_back(std::vector<std::string>());
 	read_ranges.push_back(std::vector<std::vector<std::pair<uint64_t, uint64_t> > >());
