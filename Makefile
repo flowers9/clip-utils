@@ -34,13 +34,15 @@ PACBIO_INCLUDES = -I./pbbam-2.1.0/include -I./pbcopper-2.0.0/include -I./htslib-
 # needs wrapper script to set LD_LIBRARY_PATH (for the three paths below),
 # or it won't find htslib
 
+# this is the last release that included the libraries
+PACBIO_PATH = /home/smrtlink_f8/install/smrtlink-release_13.0.0.207600/bundles/smrttools/current/private
 PACBIO_LIBS = \
-	-Wl,-rpath=/home/smrtlink_f8/current/bundles/smrttools/current/private/pacbio/pbbam/lib \
-	-Wl,-rpath=/home/smrtlink_f8/current/bundles/smrttools/current/private/pacbio/pbcopper/lib \
-	-Wl,-rpath=/home/smrtlink_f8/current/bundles/smrttools/current/private/thirdparty/htslib/htslib_1.17/lib \
-	-L/home/smrtlink_f8/current/bundles/smrttools/current/private/pacbio/pbbam/lib \
-	-L/home/smrtlink_f8/current/bundles/smrttools/current/private/pacbio/pbcopper/lib \
-	-L/home/smrtlink_f8/current/bundles/smrttools/current/private/thirdparty/htslib/htslib_1.17/lib \
+	-Wl,-rpath=$(PACBIO_PATH)/pacbio/pbbam/lib \
+	-Wl,-rpath=$(PACBIO_PATH)/pacbio/pbcopper/lib \
+	-Wl,-rpath=$(PACBIO_PATH)/thirdparty/htslib/htslib_1.17/lib \
+	-L$(PACBIO_PATH)/pacbio/pbbam/lib \
+	-L$(PACBIO_PATH)/pacbio/pbcopper/lib \
+	-L$(PACBIO_PATH)/thirdparty/htslib/htslib_1.17/lib \
 	-lpbcopper -lpbbam
 
 #else
