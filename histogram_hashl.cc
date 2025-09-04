@@ -343,7 +343,7 @@ static void get_read_sizes(const char * const file, hashl_metadata &metadata) {
 		do {
 			size_t i(1);
 			for (; i < line.size() && !isspace(line[i]); ++i) { }
-			metadata.add_read(line.substr(1, i - 1));
+			metadata.add_readname(line.substr(1, i - 1));
 			seq.clear();
 			while (pfgets(fd, line) != -1 && line[0] != '>') {
 				seq += line;
@@ -354,7 +354,7 @@ static void get_read_sizes(const char * const file, hashl_metadata &metadata) {
 		do {
 			size_t i(1);
 			for (; i < line.size() && !isspace(line[i]); ++i) { }
-			metadata.add_read(line.substr(1, i - 1));
+			metadata.add_readname(line.substr(1, i - 1));
 			if (pfgets(fd, seq) == -1) {		// sequence
 				std::cerr << "Error: truncated fastq file: " << file << "\n";
 				exit(1);
@@ -428,13 +428,12 @@ static void count_nmers(hashl &mer_list, const std::vector<size_t> &read_ends) {
 static void read_in_files(int argc, char **argv, hashl &mer_list) {
 	const uint64_t file_count(argc - optind);
 	hashl_metadata metadata;
+	// prepare metadata for reading in the file
 	for (size_t i(0); i < file_count; ++i) {
 		if (opt_feedback) {
 			std::cerr << time(0) << ": Getting read sizes for " << argv[i + optind] << "\n";
 		}
-		// prepare metadata for reading in the file
-		metadata.add_file(argv[i + optind]);
-		// actually read in the file
+		metadata.add_filename(argv[i + optind]);
 		get_read_sizes(argv[i + optind], metadata);
 		// clean up any lose ends
 		metadata.finalize_file();

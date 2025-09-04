@@ -13,7 +13,7 @@
 // add metadata from another hash to ours
 void hashl_metadata::add(hashl_metadata &a, const size_t padding) {
 	if (padding) {				// synchronize with hashl's data padding
-		add_read("__padding__");
+		add_readname("__padding__");
 		add_read_range(0, padding);
 	}
 	files.reserve(files.size() + a.files.size());
@@ -181,13 +181,13 @@ std::vector<size_t> hashl_metadata::read_ends() const {
 	return list;
 }
 
-void hashl_metadata::add_file(const std::string &file_name) {
+void hashl_metadata::add_filename(const std::string &file_name) {
 	files.push_back(file_name);
 	reads.push_back(std::vector<std::string>());
 	read_ranges.push_back(std::vector<std::vector<std::pair<uint64_t, uint64_t> > >());
 }
 
-void hashl_metadata::add_read(const std::string &read_name) {
+void hashl_metadata::add_readname(const std::string &read_name) {
 	reads.back().push_back(read_name);
 	read_ranges.back().push_back(std::vector<std::pair<uint64_t, uint64_t> >());
 }

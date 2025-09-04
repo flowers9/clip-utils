@@ -26,9 +26,9 @@ class hashl_metadata {
     public:
 	explicit hashl_metadata(void) { }
 	~hashl_metadata(void) { }
-	void add_file(const std::string &file_name);	// add new file
-	void add_read(const std::string &read_name);	// add new read at current file
-	void add_read_range(uint64_t, uint64_t);	// add new read range at current read
+	void add_filename(const std::string &file_name);	// add new file
+	void add_readname(const std::string &read_name);	// add new read for current file
+	void add_read_range(uint64_t, uint64_t);	// add new read range for current read
 	void finalize_file(void);			// remove last adds if empty
 	void read_data(std::vector<hashl::base_type> &data_out, bool feedback = 0);
 	void pack(std::vector<char> &) const;		// create blob of our data

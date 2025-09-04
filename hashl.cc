@@ -366,8 +366,8 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 	} else if (!a.metadata.empty()) {			// pad ours, then add a's
 		if (offset) {
 			// add dummy entry for current hash
-			our_md.add_file("unknown");
-			our_md.add_read("padding");
+			our_md.add_filename("unknown");
+			our_md.add_readname("padding");
 			our_md.add_read_range(0, offset);
 		}
 		a_md.unpack(a.metadata);
@@ -378,8 +378,8 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 		const size_t padding(offset - our_md.sequence_length());
 		// add dummy entry for a
 		const size_t a_offset(a.data.size() * sizeof(base_type) * 8);
-		a_md.add_file("unknown");
-		a_md.add_read("padding");
+		a_md.add_filename("unknown");
+		a_md.add_readname("padding");
 		a_md.add_read_range(0, a_offset);
 		our_md.add(a_md, padding);
 		our_md.pack(metadata);
