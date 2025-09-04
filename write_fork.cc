@@ -13,8 +13,6 @@
 #include <sys/wait.h>	// WNOHANG, waitpid()
 #include <unistd.h>	// _SC_OPEN_MAX, _exit(), STDOUT_FILENO, close(), dup2(), execvp(), fork(), pipe(), sysconf, write()
 
-// XXX - consider switching to popen instead of fork/exec
-
 class WriteForkLocalData {
     private:
 	// map of open files to forked process id's
