@@ -201,7 +201,7 @@ static void print_usage() {
 		"    -S ## load histogram memory dump from given file\n"
 		"    -V    print version\n"
 		"    -w ## print frequency count instead of histogram, for all n-mers with\n"
-		"          a frequency of at least ## [0 (off)]\n"
+		"          a frequency of at least ## [0 (off)] (-1 => print nothing)\n"
 		"    -z ## number of possible n-mers to allocate memory for (overrides -l/-L)\n"
 		"          (k, m, or g may be suffixed)\n";
 	exit(1);
@@ -330,7 +330,7 @@ static void get_subread_sizes(const std::string &seq, hashl_metadata &metadata) 
 }
 
 // read file and get total space needed for data and metadata
-static void get_read_sizes(const char * const file, hashl_metadata &metadata) {
+static void get_read_sizes(hashl_metadata &metadata, const std::string &file) {
 	const int fd(open_compressed(file));
 	if (fd == -1) {
 		std::cerr << "Error: open: " << file << "\n";
@@ -361,7 +361,7 @@ static void get_read_sizes(const char * const file, hashl_metadata &metadata) {
 			}
 			get_subread_sizes(seq, metadata);
 			// skip quality header and quality
-			// (use seq because it'll be the same length as quality)
+			// (use seq as buffer because it'll be the same length as quality)
 			if (pfgets(fd, line) == -1 || pfgets(fd, seq) == -1) {
 				std::cerr << "Error: truncated fastq file: " << file << "\n";
 				exit(1);
@@ -377,21 +377,21 @@ static void get_read_sizes(const char * const file, hashl_metadata &metadata) {
 static void count_nmers(hashl &mer_list, const std::vector<size_t> &read_ends) {
 	const std::vector<hashl::base_type> &data(mer_list.get_data());
 	hashl::key_type key(mer_list), comp_key(mer_list);
-	size_t total_read_ranges(0);
+	size_t total_read_ranges = 0;
 	size_t i(0), j(0), k(sizeof(hashl::base_type) * 8 - 2);
-	// iterate over all reads (nmers can't cross read boundaries)
-	std::vector<size_t>::const_iterator a(read_ends.begin());
-	const std::vector<size_t>::const_iterator end_a(read_ends.end());
+	// iterate over all reads (nmers can't cross read range boundaries)
+	std::vector<size_t>::const_iterator a = read_ends.begin();
+	const std::vector<size_t>::const_iterator end_a = read_ends.end();
 	for (; a != end_a; ++a, ++total_read_ranges) {
 		// print feedback every 10 minutes
 		if (opt_feedback && elapsed_time() >= 600) {
 			start_time();
 			std::cerr << time(0) << ": " << mer_list.size() << " entries used (" << double(100) * mer_list.size() / mer_list.capacity() << ") (" << total_read_ranges << " read ranges)\n";
 		}
-		const size_t end_i(i + opt_mer_length - 1);
+		const size_t end_i = i + opt_mer_length - 1;
 		// load keys with opt_mer_length - 1 basepairs
 		for (; i < end_i; ++i) {
-			const hashl::base_type c((data[j] >> k) & 3);
+			const hashl::base_type c = (data[j] >> k) & 3;
 			key.push_back(c);
 			comp_key.push_front(3 - c);
 			if (k) {
@@ -403,7 +403,7 @@ static void count_nmers(hashl &mer_list, const std::vector<size_t> &read_ends) {
 		}
 		// run over all nmers, one basepair at a time
 		for (; i < *a; ++i) {
-			const hashl::base_type c((data[j] >> k) & 3);
+			const hashl::base_type c = (data[j] >> k) & 3;
 			key.push_back(c);
 			comp_key.push_front(3 - c);
 			if (k) {
@@ -421,21 +421,19 @@ static void count_nmers(hashl &mer_list, const std::vector<size_t> &read_ends) {
 	}
 }
 
-// metadata format: # of files, [ filename, # of reads, read offsets, read names ]
-// strings are null delimited, # and read lengths are uint64_t
-// hashl boilerplate check will ensure byte order is the same read as written
-
-static void read_in_files(int argc, char **argv, hashl &mer_list) {
-	const uint64_t file_count(argc - optind);
+static void read_in_files(hashl &mer_list, const std::vector<std::string> &file_list) {
 	hashl_metadata metadata;
 	// prepare metadata for reading in the file
-	for (size_t i(0); i < file_count; ++i) {
+	std::vector<std::string>::const_iterator file = file_list.begin();
+	const std::vector<std::string>::const_iterator file_end = file_list.end();
+	for (; file != file_end; ++file) {
 		if (opt_feedback) {
-			std::cerr << time(0) << ": Getting read sizes for " << argv[i + optind] << "\n";
+			std::cerr << time(0) << ": Getting read sizes for " << *file << "\n";
 		}
-		metadata.add_filename(argv[i + optind]);
-		get_read_sizes(argv[i + optind], metadata);
-		// clean up any lose ends
+		// prepare for getting read names and sizes
+		metadata.add_filename(*file);
+		get_read_sizes(metadata, *file);
+		// mark end of file and clean up loose ends
 		metadata.finalize_file();
 	}
 	std::vector<hashl::base_type> data;
@@ -487,14 +485,14 @@ int main(int argc, char **argv) {
 		}
 	}
 	if (optind != argc) {
-		read_in_files(argc, argv, mer_list);
+		read_in_files(mer_list, std::vector<std::string>(argv + optind, argv + argc));
 	}
 	if (opt_feedback) {
 		std::cerr << time(0) << ": Printing results\n";
 	}
 	if (opt_frequency_cutoff == 0) {
 		print_mer_histogram(fp_out, mer_list);
-	} else {
+	} else if (opt_frequency_cutoff != size_t(-1)) {
 		print_mer_frequency(fp_out, mer_list);
 	}
 	fp_out.flush();

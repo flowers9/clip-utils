@@ -284,6 +284,9 @@ void hashl::save(const int fd) const {
 	}
 }
 
+// regenerate key and values tables with new size - holds both new and
+// old key and value lists in memory while copying
+
 void hashl::resize(hash_offset_type size_asked) {
 	if (size_asked < used_elements) {
 		return;

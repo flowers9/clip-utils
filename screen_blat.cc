@@ -82,8 +82,8 @@ static void parse_output_matched(std::map<std::string, std::map<std::string, cha
 
 static void print_output_matched(std::map<std::string, std::map<std::string, char> > &reads) {
 	std::map<std::string, std::map<std::string, char> >::const_iterator a = reads.begin();
-	std::map<std::string, std::map<std::string, char> >::const_iterator a_end = reads.end();
-	for (; a != a_end; ++a) {
+	std::map<std::string, std::map<std::string, char> >::const_iterator end_a = reads.end();
+	for (; a != end_a; ++a) {
 		std::cout << a->first;
 		std::map<std::string, char>::const_iterator b = a->second.begin();
 		std::map<std::string, char>::const_iterator b_end = a->second.end();
@@ -131,8 +131,8 @@ static void parse_output(std::map<std::string, char> &reads) {
 
 static void print_output(std::map<std::string, char> &reads) {
 	std::map<std::string, char>::const_iterator a = reads.begin();
-	std::map<std::string, char>::const_iterator a_end = reads.end();
-	for (; a != a_end; ++a) {
+	std::map<std::string, char>::const_iterator end_a = reads.end();
+	for (; a != end_a; ++a) {
 		std::cout << a->first << std::endl;
 	}
 }
