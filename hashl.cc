@@ -246,6 +246,29 @@ bool hashl::increment(const key_type &key, const key_type &comp_key, const data_
 	return 1;
 }
 
+// insert key, but if it already exists, mark it as invalid
+bool hashl::insert_unique(const key_type &key, const key_type &comp_key, const data_offset_type offset) {
+	const hash_offset_type i(insert_offset(key, comp_key, offset));
+	if (i == modulus) {	// insert failed
+		return 0;
+	}
+	if (!value_list[i]) {
+		value_list[i] = 1;
+	} else {
+		value_list[i] = invalid_value;
+	}
+	return 1;
+}
+
+bool hashl::insert_invalid(const key_type &key, const key_type &comp_key, const data_offset_type offset) {
+	const hash_offset_type i(insert_offset(key, comp_key, offset));
+	if (i == modulus) {	// insert failed
+		return 0;
+	}
+	value_list[i] = invalid_value;
+	return 1;
+}
+
 // return the value associated with a key (or zero if key not found)
 
 hashl::value_type hashl::value(const key_type &key) const {

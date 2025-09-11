@@ -25,8 +25,10 @@ static double opt_load_lower_bound;
 static double opt_load_upper_bound;
 static int opt_histogram_restore;
 static size_t opt_frequency_cutoff;
+static size_t opt_max_repeats;
 static size_t opt_mer_length;
 static size_t opt_nmers;
+static size_t opt_window_size;
 static std::string opt_save_file;
 
 static void save_memory(const hashl &mer_list) {
@@ -197,11 +199,13 @@ static void print_usage() {
 		"    -L ## upper bound for hash fill fraction\n"
 		"    -m ## set mer length [24]\n"
 		"    -o ## print output to file instead of stdout\n"
+		"    -R ## maximum number of repeats in window to still be \"unique\" [6]\n"
 		"    -s ## save histogram memory structure to file\n"
 		"    -S ## load histogram memory dump from given file\n"
 		"    -V    print version\n"
 		"    -w ## print frequency count instead of histogram, for all n-mers with\n"
 		"          a frequency of at least ## [0 (off)] (-1 => print nothing)\n"
+		"    -W ## window size for allowing repeat n-mers [0 (off)]\n"
 		"    -z ## number of possible n-mers to allocate memory for (overrides -l/-L)\n"
 		"          (k, m, or g may be suffixed)\n";
 	exit(1);
@@ -214,13 +218,15 @@ static std::ostream &get_opts(int argc, char **argv) {
 	opt_feedback = 1;
 	opt_frequency_cutoff = 0;
 	opt_histogram_restore = -1;
+	opt_max_repeats = 6;
 	opt_mer_length = 24;
 	opt_print_gc = 0;
 	opt_load_lower_bound = 0;
 	opt_load_upper_bound = 1;
 	opt_nmers = 0;
+	opt_window_size = 0;
 	int c;
-	while ((c = getopt(argc, argv, "ghil:L:m:o:s:S:Vw:z:")) != EOF) {
+	while ((c = getopt(argc, argv, "ghil:L:m:o:R:s:S:Vw:W:z:")) != EOF) {
 		switch (c) {
 		    case 'g':
 			opt_print_gc = 1;
@@ -251,6 +257,9 @@ static std::ostream &get_opts(int argc, char **argv) {
 				exit(1);
 			}
 			break;
+		    case 'R':
+			std::istringstream(optarg) >> opt_max_repeats;
+			break;
 		    case 's':
 			opt_save_file = optarg;
 			if (!used_files.insert(optarg).second) {
@@ -279,6 +288,9 @@ static std::ostream &get_opts(int argc, char **argv) {
 			exit(0);
 		    case 'w':
 			std::istringstream(optarg) >> opt_frequency_cutoff;
+			break;
+		    case 'W':
+			std::istringstream(optarg) >> opt_window_size;
 			break;
 		    case 'z':
 			opt_nmers = get_value(optarg);
@@ -374,15 +386,33 @@ static void get_read_sizes(hashl_metadata &metadata, const std::string &file) {
 	close_compressed(fd);
 }
 
+class CountState {
+    public:
+	hashl::key_type key, comp_key;
+    private:
+	size_t j, k;
+	const std::vector<hashl::base_type> &data;
+    public:
+	explicit CountState(const hashl &mer_list) : key(mer_list), comp_key(mer_list), j(0), k(sizeof(hashl::base_type) * 8 - 2), data(mer_list.get_data()) { }
+	~CountState() { }
+	void increment_keys() {
+		const hashl::base_type c = (data[j] >> k) & 3;
+		key.push_back(c);
+		comp_key.push_front(3 - c);
+		if (k) {
+			k -= 2;
+		} else {
+			k = sizeof(hashl::base_type) * 8 - 2;
+			++j;
+		}
+	}
+};
+
 static void count_nmers(hashl &mer_list, const std::vector<size_t> &read_ends) {
-	const std::vector<hashl::base_type> &data(mer_list.get_data());
-	hashl::key_type key(mer_list), comp_key(mer_list);
-	size_t total_read_ranges = 0;
-	size_t i(0), j(0), k(sizeof(hashl::base_type) * 8 - 2);
+	CountState x(mer_list);
+	size_t i = 0, total_read_ranges = 0;
 	// iterate over all reads (nmers can't cross read range boundaries)
-	std::vector<size_t>::const_iterator a = read_ends.begin();
-	const std::vector<size_t>::const_iterator end_a = read_ends.end();
-	for (; a != end_a; ++a, ++total_read_ranges) {
+	for (const auto &read_end : read_ends) {
 		// print feedback every 10 minutes
 		if (opt_feedback && elapsed_time() >= 600) {
 			start_time();
@@ -391,48 +421,110 @@ static void count_nmers(hashl &mer_list, const std::vector<size_t> &read_ends) {
 		const size_t end_i = i + opt_mer_length - 1;
 		// load keys with opt_mer_length - 1 basepairs
 		for (; i < end_i; ++i) {
-			const hashl::base_type c = (data[j] >> k) & 3;
-			key.push_back(c);
-			comp_key.push_front(3 - c);
-			if (k) {
-				k -= 2;
-			} else {
-				k = sizeof(hashl::base_type) * 8 - 2;
-				++j;
-			}
+			x.increment_keys();
 		}
 		// run over all nmers, one basepair at a time
-		for (; i < *a; ++i) {
-			const hashl::base_type c = (data[j] >> k) & 3;
-			key.push_back(c);
-			comp_key.push_front(3 - c);
-			if (k) {
-				k -= 2;
-			} else {
-				k = sizeof(hashl::base_type) * 8 - 2;
-				++j;
-			}
+		for (; i < read_end; ++i) {
+			x.increment_keys();
 			// increment with bit offset to start of nmer
-			if (!mer_list.increment(key, comp_key, 2 * (i + 1 - opt_mer_length))) {
+			if (!mer_list.increment(x.key, x.comp_key, 2 * (i + 1 - opt_mer_length))) {
 				std::cerr << "Error: ran out of space in hash\n";
 				exit(1);
 			}
 		}
+		++total_read_ranges;
+	}
+}
+
+// this version only keeps unique nmers, rather than all, but it allows for X
+// repeats of a given nmer within a given window size to count as unique if
+// it doesn't appear anywhere else; non-unique nmers are marked as invalid
+
+static void count_nmers_window(hashl &mer_list, const std::vector<size_t> &read_ends, const size_t window_size, const size_t max_repeats) {
+	std::map<hashl::vector_key_type, unsigned int> window_keys;
+	CountState x(mer_list);
+	size_t i = 0, total_read_ranges = 0;
+	// iterate over all reads (nmers can't cross read range boundaries)
+	for (const auto &read_end : read_ends) {
+		// print feedback every 10 minutes
+		if (opt_feedback && elapsed_time() >= 600) {
+			start_time();
+			std::cerr << time(0) << ": " << mer_list.size() << " entries used (" << double(100) * mer_list.size() / mer_list.capacity() << ") (" << total_read_ranges << " read ranges)\n";
+		}
+		const size_t end_i = i + opt_mer_length - 1;
+		// load keys with opt_mer_length - 1 basepairs
+		for (; i < end_i; ++i) {
+			x.increment_keys();
+		}
+		CountState x_window(x);
+		// load window keys with window_size keys
+		const size_t original_i = i;
+		const size_t end_i2 = i + window_size < read_end ? i + window_size : read_end;
+		for (; i < end_i2; ++i) {
+			x.increment_keys();
+			++window_keys[x.key < x.comp_key ? x.key.value() : x.comp_key.value()];
+		}
+		// run over all nmers, one basepair at a time
+		for (; i < read_end; ++i) {
+			x_window.increment_keys();
+			const auto b = window_keys.find(x_window.key < x_window.comp_key ? x_window.key.value() : x_window.comp_key.value());
+			if (b != window_keys.end()) {
+				if (b->second > max_repeats) {
+					if (!mer_list.insert_invalid(x_window.key, x_window.comp_key, 2 * (i - window_size + 1 - opt_mer_length))) {
+						std::cerr << "Error: ran out of space in hash\n";
+						exit(1);
+					}
+				} else {
+					// insert with bit offset to start of nmer
+					if (!mer_list.insert_unique(x_window.key, x_window.comp_key, 2 * (i - window_size + 1 - opt_mer_length))) {
+						std::cerr << "Error: ran out of space in hash\n";
+						exit(1);
+					}
+				}
+				window_keys.erase(b);
+			}
+			x.increment_keys();
+			++window_keys[x.key < x.comp_key ? x.key.value() : x.comp_key.value()];
+		}
+		if (i > original_i + window_size) {
+			i -= window_size;
+		} else {
+			i = original_i;
+		}
+		// now drain window_keys
+		for (; i < read_end; ++i) {
+			x_window.increment_keys();
+			const auto b = window_keys.find(x_window.key < x_window.comp_key ? x_window.key.value() : x_window.comp_key.value());
+			if (b != window_keys.end()) {
+				if (b->second > max_repeats) {
+					if (!mer_list.insert_invalid(x_window.key, x_window.comp_key, 2 * (i - window_size + 1 - opt_mer_length))) {
+						std::cerr << "Error: ran out of space in hash\n";
+						exit(1);
+					}
+				} else {
+					// insert with bit offset to start of nmer
+					if (!mer_list.insert_unique(x_window.key, x_window.comp_key, 2 * (i - window_size + 1 - opt_mer_length))) {
+						std::cerr << "Error: ran out of space in hash\n";
+						exit(1);
+					}
+				}
+				window_keys.erase(b);
+			}
+		}
+		++total_read_ranges;
 	}
 }
 
 static void read_in_files(hashl &mer_list, const std::vector<std::string> &file_list) {
 	hashl_metadata metadata;
 	// prepare metadata for reading in the file
-	std::vector<std::string>::const_iterator file = file_list.begin();
-	const std::vector<std::string>::const_iterator file_end = file_list.end();
-	for (; file != file_end; ++file) {
+	for (const auto &file : file_list) {
 		if (opt_feedback) {
-			std::cerr << time(0) << ": Getting read sizes for " << *file << "\n";
+			std::cerr << time(0) << ": Getting read sizes for " << file << "\n";
 		}
 		// prepare for getting read names and sizes
-		metadata.add_filename(*file);
-		get_read_sizes(metadata, *file);
+		metadata.add_filename(file);
+		get_read_sizes(metadata, file);
 		// mark end of file and clean up loose ends
 		metadata.finalize_file();
 	}
@@ -452,7 +544,11 @@ static void read_in_files(hashl &mer_list, const std::vector<std::string> &file_
 		start_time();
 	}
 	const std::vector<size_t> read_ends(metadata.read_ends());
-	count_nmers(mer_list, read_ends);
+	if (opt_window_size) {
+		count_nmers_window(mer_list, read_ends, opt_window_size, opt_max_repeats);
+	} else {
+		count_nmers(mer_list, read_ends);
+	}
 	if (opt_feedback) {
 		print_final_input_feedback(mer_list);
 	}
@@ -484,7 +580,7 @@ int main(int argc, char **argv) {
 			print_final_input_feedback(mer_list);
 		}
 	}
-	if (optind != argc) {
+	if (optind < argc) {
 		read_in_files(mer_list, std::vector<std::string>(argv + optind, argv + argc));
 	}
 	if (opt_feedback) {

@@ -21,12 +21,13 @@ class hashl {
 	typedef unsigned long hash_offset_type;
 	typedef unsigned long data_offset_type;
 	typedef uint64_t base_type;
+	typedef std::vector<base_type> vector_key_type;
 	// invalid_value must be greater than max_small_value
 	enum { max_small_value = UCHAR_MAX - 1, invalid_value = UCHAR_MAX, invalid_key = ULONG_MAX };
 
 	class key_type {
 	    private:
-		std::vector<base_type> k;	// stored in reverse - high word in [0]
+		vector_key_type k;		// stored in reverse - high word in [0]
 		const size_t word_width;
 	    public:
 		void copy_in(const std::vector<base_type> &, const data_offset_type);
@@ -85,6 +86,9 @@ class hashl {
 		void make_complement(const key_type &);
 		void convert_to_string(std::string &) const;
 		bool equal(const std::vector<base_type> &, const data_offset_type) const;
+		const vector_key_type &value() const {
+			return k;
+		}
 	};
 
 	class iterator {
@@ -216,6 +220,10 @@ class hashl {
 	void increment(const key_type &key, const key_type &comp_key);
 	// will insert new key if missing, returns false if insertion failed
 	bool increment(const key_type &key, const key_type &comp_key, data_offset_type);
+	// will insert new key if missing, or change an existing one to invalid
+	bool insert_unique(const key_type &key, const key_type &comp_key, data_offset_type);
+	// will insert a key with an invalid value, or convert existing value to invalid
+	bool insert_invalid(const key_type &key, const key_type &comp_key, data_offset_type);
 	value_type value(const key_type &) const;
 	std::pair<data_offset_type, value_type> entry(const key_type &) const;
 	hash_offset_type size(void) const {
