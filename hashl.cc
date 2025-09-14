@@ -90,21 +90,21 @@ void hashl::key_type::copy_in(const std::vector<base_type> &data, const data_off
 	const base_type high_bits(bit_shift + 2);
 	if (starting_bits == high_bits) {
 		k[0] = data[i] & high_mask;
-		for (size_t j(1); j < word_width; ++j) {
+		for (size_t j(1); j < k.size(); ++j) {
 			k[j] = data[i + j];
 		}
 	} else if (starting_bits < high_bits) {		// shift left to fill up first word
 		const int shift_left(high_bits - starting_bits);
 		const int shift_right(sizeof(base_type) * 8 - shift_left);
 		k[0] = ((data[i] << shift_left) | (data[i + 1] >> shift_right)) & high_mask;
-		for (size_t j(1); j < word_width; ++j) {
+		for (size_t j(1); j < k.size(); ++j) {
 			k[j] = (data[i + j] << shift_left) | (data[i + j + 1] >> shift_right);
 		}
 	} else {					// shift right to empty out first word
 		const int shift_right(starting_bits - high_bits);
 		const int shift_left(sizeof(base_type) * 8 - shift_right);
 		k[0] = (data[i] >> shift_right) & high_mask;
-		for (size_t j(1); j < word_width; ++j) {
+		for (size_t j(1); j < k.size(); ++j) {
 			k[j] = (data[i + j - 1] << shift_left) | (data[i + j] >> shift_right);
 		}
 	}
@@ -124,7 +124,7 @@ bool hashl::key_type::equal(const std::vector<base_type> &data, const data_offse
 		if (k[0] != (data[i] & high_mask)) {
 			return 0;
 		}
-		for (size_t j(1); j < word_width; ++j) {
+		for (size_t j(1); j < k.size(); ++j) {
 			if (k[j] != data[i + j]) {
 				return 0;
 			}
@@ -135,7 +135,7 @@ bool hashl::key_type::equal(const std::vector<base_type> &data, const data_offse
 		if (k[0] != (((data[i] << shift_left) | (data[i + 1] >> shift_right)) & high_mask)) {
 			return 0;
 		}
-		for (size_t j(1); j < word_width; ++j) {
+		for (size_t j(1); j < k.size(); ++j) {
 			if (k[j] != ((data[i + j] << shift_left) | (data[i + j + 1] >> shift_right))) {
 				return 0;
 			}
@@ -146,7 +146,7 @@ bool hashl::key_type::equal(const std::vector<base_type> &data, const data_offse
 		if (k[0] != ((data[i] >> shift_right) & high_mask)) {
 			return 0;
 		}
-		for (size_t j(1); j < word_width; ++j) {
+		for (size_t j(1); j < k.size(); ++j) {
 			if (k[j] != ((data[i + j - 1] << shift_left) | (data[i + j] >> shift_right))) {
 				return 0;
 			}
@@ -180,7 +180,7 @@ hashl::hash_offset_type hashl::insert_offset(const key_type &key, const key_type
 // TODO: could be more efficient
 
 void hashl::key_type::make_complement(const hashl::key_type &key) {
-	const size_t bit_width(bit_shift + 2 + (word_width - 1) * sizeof(base_type) * 8);
+	const size_t bit_width(bit_shift + 2 + (k.size() - 1) * sizeof(base_type) * 8);
 	for (size_t i(0); i < bit_width; i += 2) {
 		push_back(3 - key.basepair(i));
 	}
@@ -189,7 +189,7 @@ void hashl::key_type::make_complement(const hashl::key_type &key) {
 void hashl::key_type::convert_to_string(std::string &sequence) const {
 	const char values[4] = { 'A', 'C', 'G', 'T' };
 	sequence.clear();
-	const size_t bit_width(bit_shift + 2 + (word_width - 1) * sizeof(base_type) * 8);
+	const size_t bit_width(bit_shift + 2 + (k.size() - 1) * sizeof(base_type) * 8);
 	// relies on wrap-around for termination
 	for (size_t i(bit_width - 2); i < bit_width; i -= 2) {
 		sequence += values[basepair(i)];

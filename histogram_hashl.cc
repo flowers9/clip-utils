@@ -16,6 +16,7 @@
 #include <stdlib.h>	// exit()
 #include <string.h>	// memcpy()
 #include <string>	// string
+#include <unordered_map>	// unordered_map<>
 #include <utility>	// make_pair(), pair<>
 #include <vector>	// vector<>
 
@@ -436,12 +437,38 @@ static void count_nmers(hashl &mer_list, const std::vector<size_t> &read_ends) {
 	}
 }
 
-// this version only keeps unique nmers, rather than all, but it allows for X
-// repeats of a given nmer within a given window size to count as unique if
-// it doesn't appear anywhere else; non-unique nmers are marked as invalid
+// this version only counts unique nmers, but it allows for X repeats of a
+// given nmer within a given window size to count as unique if it doesn't
+// appear anywhere else; non-unique nmers are marked as invalid
+
+// note: storing key and comp_key over the window range takes a lot of
+// time (increased run time by 50%) over keeping the running CountState
+// for the leading and trailing edge of the window.
+
+// note: using a plain map<> for the window tracking is very slow;
+// duplicating mer_list is normal speed, but uses a lot of memory;
+// unordered_map is a bit faster than map<vector>, and uses less memory
+
+// note: while a simpler hash may be quicker to hash, if it groups more
+// clumpy you lose out in the end by map<> taking longer
+
+template<>
+struct std::hash<hashl::vector_key_type> {
+	std::size_t operator()(const hashl::vector_key_type& k) const noexcept {
+		hashl::base_type __x(k[0]);
+		for (size_t __i(1); __i < k.size(); ++__i) {
+			__x ^= k[__i];
+		}
+		return __x;
+	}
+};      
 
 static void count_nmers_window(hashl &mer_list, const std::vector<size_t> &read_ends, const size_t window_size, const size_t max_repeats) {
-	std::map<hashl::vector_key_type, unsigned int> window_keys;
+	std::vector<hashl::base_type> data_copy(mer_list.get_data());
+	// window_mers needs at least window_size entries, but a bit more does help
+	size_t hash_size = 1;
+	for (; hash_size < window_size; hash_size <<= 1) { }
+	std::unordered_map<hashl::vector_key_type, unsigned int> window_mers(hash_size << 1);
 	CountState x(mer_list);
 	size_t i = 0, total_read_ranges = 0;
 	// iterate over all reads (nmers can't cross read range boundaries)
@@ -457,18 +484,18 @@ static void count_nmers_window(hashl &mer_list, const std::vector<size_t> &read_
 			x.increment_keys();
 		}
 		CountState x_window(x);
-		// load window keys with window_size keys
+		// load window_mers with window_size keys
 		const size_t original_i = i;
 		const size_t end_i2 = i + window_size < read_end ? i + window_size : read_end;
 		for (; i < end_i2; ++i) {
 			x.increment_keys();
-			++window_keys[x.key < x.comp_key ? x.key.value() : x.comp_key.value()];
+			++window_mers[x.key < x.comp_key ? x.key.value() : x.comp_key.value()];
 		}
 		// run over all nmers, one basepair at a time
 		for (; i < read_end; ++i) {
 			x_window.increment_keys();
-			const auto b = window_keys.find(x_window.key < x_window.comp_key ? x_window.key.value() : x_window.comp_key.value());
-			if (b != window_keys.end()) {
+			const auto b = window_mers.find(x.key < x.comp_key ? x.key.value() : x.comp_key.value());
+			if (b != window_mers.end()) {
 				if (b->second > max_repeats) {
 					if (!mer_list.insert_invalid(x_window.key, x_window.comp_key, 2 * (i - window_size + 1 - opt_mer_length))) {
 						std::cerr << "Error: ran out of space in hash\n";
@@ -481,10 +508,10 @@ static void count_nmers_window(hashl &mer_list, const std::vector<size_t> &read_
 						exit(1);
 					}
 				}
-				window_keys.erase(b);
+				window_mers.erase(b);
 			}
 			x.increment_keys();
-			++window_keys[x.key < x.comp_key ? x.key.value() : x.comp_key.value()];
+			++window_mers[x.key < x.comp_key ? x.key.value() : x.comp_key.value()];
 		}
 		if (i > original_i + window_size) {
 			i -= window_size;
@@ -494,8 +521,8 @@ static void count_nmers_window(hashl &mer_list, const std::vector<size_t> &read_
 		// now drain window_keys
 		for (; i < read_end; ++i) {
 			x_window.increment_keys();
-			const auto b = window_keys.find(x_window.key < x_window.comp_key ? x_window.key.value() : x_window.comp_key.value());
-			if (b != window_keys.end()) {
+			const auto b = window_mers.find(x.key < x.comp_key ? x.key.value() : x.comp_key.value());
+			if (b != window_mers.end()) {
 				if (b->second > max_repeats) {
 					if (!mer_list.insert_invalid(x_window.key, x_window.comp_key, 2 * (i - window_size + 1 - opt_mer_length))) {
 						std::cerr << "Error: ran out of space in hash\n";
@@ -508,7 +535,7 @@ static void count_nmers_window(hashl &mer_list, const std::vector<size_t> &read_
 						exit(1);
 					}
 				}
-				window_keys.erase(b);
+				window_mers.erase(b);
 			}
 		}
 		++total_read_ranges;

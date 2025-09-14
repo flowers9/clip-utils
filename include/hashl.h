@@ -28,11 +28,10 @@ class hashl {
 	class key_type {
 	    private:
 		vector_key_type k;		// stored in reverse - high word in [0]
-		const size_t word_width;
 	    public:
 		void copy_in(const std::vector<base_type> &, const data_offset_type);
 		bool operator==(const key_type &__a) const {
-			for (size_t __i(0); __i < word_width; ++__i) {
+			for (size_t __i(0); __i < k.size(); ++__i) {
 				if (k[__i] != __a.k[__i]) {
 					return 0;
 				}
@@ -42,25 +41,25 @@ class hashl {
 		bool operator!=(const key_type &__a) const {
 			return !(*this == __a);
 		}
-		base_type hash(void) const {
+		base_type hash(void) const noexcept {
 			base_type __x(k[0]);
-			for (size_t __i(1); __i < word_width; ++__i) {
+			for (size_t __i(1); __i < k.size(); ++__i) {
 				__x ^= k[__i];
 			}
 			return __x;
 		}
 		int basepair(const size_t __i) const {
 			const size_t __n(__i / (sizeof(base_type) * 8));
-			return (k[word_width - 1 - __n] >> (__i - __n * sizeof(base_type) * 8)) & 3;
+			return (k[k.size() - 1 - __n] >> (__i - __n * sizeof(base_type) * 8)) & 3;
 		}
 	    private:
 		const size_t bit_shift;		// precalc for push_front
 		const base_type high_mask;	// precalc for push_back
 	    public:
-		explicit key_type(const hashl &__a) : k(__a.words(), 0), word_width(__a.words()), bit_shift((__a.bits() - 2) % (sizeof(base_type) * 8)), high_mask(static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - __a.bits() % (sizeof(base_type) * 8))) { }
+		explicit key_type(const hashl &__a) : k(__a.words(), 0), bit_shift((__a.bits() - 2) % (sizeof(base_type) * 8)), high_mask(static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - __a.bits() % (sizeof(base_type) * 8))) { }
 		~key_type(void) { }
 		bool operator<(const key_type &__a) const {
-			for (size_t __i(0); __i != word_width; ++__i) {
+			for (size_t __i(0); __i != k.size(); ++__i) {
 				if (k[__i] != __a.k[__i]) {
 					return k[__i] < __a.k[__i];
 				}
@@ -70,7 +69,7 @@ class hashl {
 		void push_back(const base_type __x) {
 			const size_t __n(sizeof(base_type) * 8 - 2);
 			size_t __i(0);
-			for (; __i < word_width - 1; ++__i) {
+			for (; __i < k.size() - 1; ++__i) {
 				k[__i] = (k[__i] << 2) | (k[__i + 1] >> __n);
 			}
 			k[__i] = (k[__i] << 2) | __x;
@@ -78,7 +77,7 @@ class hashl {
 		}
 		void push_front(const base_type __x) {
 			const size_t __n(sizeof(base_type) * 8 - 2);
-			for (size_t __i(word_width - 1); __i > 0; --__i) {
+			for (size_t __i(k.size() - 1); __i > 0; --__i) {
 				k[__i] = (k[__i - 1] << __n) | (k[__i] >> 2);
 			}
 			k[0] = (__x << bit_shift) | (k[0] >> 2);
@@ -255,6 +254,9 @@ class hashl {
 	}
 	const_iterator find(const key_type &key) const {
 		return const_iterator(*this, find_offset(key));
+	}
+	const_iterator find(const key_type &key, const key_type &comp_key) const {
+		return const_iterator(*this, find_offset(key, comp_key));
 	}
 	void save(int) const;
 	void set_metadata(std::vector<char> &metadata_in) {
