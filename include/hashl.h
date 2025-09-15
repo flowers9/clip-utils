@@ -12,7 +12,6 @@
 #include <string>	// string
 #include <utility>	// pair<>
 #include <vector>	// vector<>
-#include <iostream>
 
 class hashl {
     public:	// type declarations
