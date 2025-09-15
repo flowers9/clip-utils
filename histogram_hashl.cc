@@ -120,8 +120,8 @@ static unsigned long count_gc(const hashl::key_type &key) {
 // frequencies
 
 static void print_mer_histogram(std::ostream &fp_out, const hashl &mer_list) {
-	std::map<hashl::value_type, unsigned long> counts;
-	std::map<hashl::value_type, unsigned long> gc_counts;
+	std::map<hashl::small_value_type, unsigned long> counts;
+	std::map<hashl::small_value_type, unsigned long> gc_counts;
 	hashl::key_type key(mer_list);
 	hashl::const_iterator a(mer_list.cbegin());
 	const hashl::const_iterator end_a(mer_list.cend());
@@ -132,8 +132,8 @@ static void print_mer_histogram(std::ostream &fp_out, const hashl &mer_list) {
 			gc_counts[*a] += count_gc(key);
 		}
 	}
-	std::map<hashl::value_type, unsigned long>::const_iterator c(counts.begin());
-	const std::map<hashl::value_type, unsigned long>::const_iterator end_c(counts.end());
+	std::map<hashl::small_value_type, unsigned long>::const_iterator c(counts.begin());
+	const std::map<hashl::small_value_type, unsigned long>::const_iterator end_c(counts.end());
 	// don't include single occurrences in total
 	// (hashes don't have non-positive occurrence values)
 	if (c != end_c && c->first == 1) {

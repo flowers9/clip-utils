@@ -271,14 +271,14 @@ bool hashl::insert_invalid(const key_type &key, const key_type &comp_key, const 
 
 // return the value associated with a key (or zero if key not found)
 
-hashl::value_type hashl::value(const key_type &key) const {
+hashl::small_value_type hashl::value(const key_type &key) const {
 	const hash_offset_type i(find_offset(key));
 	return i < modulus ? value_list[i] : 0;
 }
 
 // same as above, but also return the data offset
 
-std::pair<hashl::data_offset_type, hashl::value_type> hashl::entry(const key_type &key) const {
+std::pair<hashl::data_offset_type, hashl::small_value_type> hashl::entry(const key_type &key) const {
 	const hash_offset_type i(find_offset(key));
 	if (i < modulus) {
 		return std::make_pair(key_list[i], value_list[i]);
@@ -345,6 +345,19 @@ void hashl::resize(hash_offset_type size_asked) {
 			value_list[new_i] = old_value_list[i];
 		}
 	}
+}
+
+// recreate the hash without keys having invalid values
+void hashl::purge_invalid_values() {
+	// remove invalid values
+	for (hash_offset_type i(0); i < modulus; ++i) {
+		if (value_list[i] == invalid_value) {
+			key_list[i] = invalid_key;
+			--used_elements;
+		}
+	}
+	// resize the hash for 50% load
+	resize(2 * used_elements);
 }
 
 // add in new hash: any values <min_cutoff ignored, <=max_cutoff increment existing value,

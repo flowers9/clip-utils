@@ -25,6 +25,7 @@ static int opt_reference_max_kmer_frequency;
 static int opt_reference_min_kmer_frequency;
 static size_t opt_nmers;
 static std::string opt_hash_save;
+static std::string opt_purged_hash_save;
 static std::string opt_results_save;
 static std::vector<std::string> opt_reference_list;
 
@@ -65,6 +66,7 @@ static void print_usage() {
 		"    -m ## reference min kmer frequency\n"
 		"    -M ## reference max kmer frequency [1]\n"
 		"    -o ## save results to a hash dump for later processing\n"
+		"    -p ## save hash, but purge invalid values before saving\n"
 		"    -r ## add reference file (may be specified multiple times)\n"
 		"    -s ## save resulting combined reference hash\n"
 		"    -S ## load histogram memory dump from given file\n"
@@ -87,7 +89,7 @@ static void get_opts(const int argc, char * const * const argv) {
 	opt_reference_max_kmer_frequency = 1;
 	opt_reference_min_kmer_frequency = 0;
 	int c;
-	while ((c = getopt(argc, argv, "hHf:F:m:M:o:r:s:S:u:Vz:")) != EOF) {
+	while ((c = getopt(argc, argv, "hHf:F:m:M:o:p:r:s:S:u:Vz:")) != EOF) {
 		switch (c) {
 		    case 'h':
 			print_usage();
@@ -112,6 +114,9 @@ static void get_opts(const int argc, char * const * const argv) {
 			break;
 		    case 'r':
 			opt_reference_list.push_back(optarg);
+			break;
+		    case 'p':
+			opt_purged_hash_save = optarg;
 			break;
 		    case 's':
 			opt_hash_save = optarg;
@@ -175,7 +180,7 @@ static void save_hash(const hashl &mer_list, const std::string &filename) {
 // print histogram of n-mer occurrences
 
 static void print_mer_histogram(const hashl &mer_list) {
-	std::map<hashl::value_type, unsigned long> counts;
+	std::map<hashl::small_value_type, unsigned long> counts;
 	hashl::const_iterator a(mer_list.cbegin());
 	const hashl::const_iterator end_a(mer_list.cend());
 	for (; a != end_a; ++a) {
@@ -184,8 +189,8 @@ static void print_mer_histogram(const hashl &mer_list) {
 	std::cout << std::fixed << std::setprecision(2);
 	double i(0);
 	double total(mer_list.size());
-	std::map<hashl::value_type, unsigned long>::const_iterator c(counts.begin());
-	const std::map<hashl::value_type, unsigned long>::const_iterator end_c(counts.end());
+	std::map<hashl::small_value_type, unsigned long>::const_iterator c(counts.begin());
+	const std::map<hashl::small_value_type, unsigned long>::const_iterator end_c(counts.end());
 	for (; c != end_c; ++c) {
 		const double x(double(100) * c->second);
 		i += x;
@@ -197,18 +202,16 @@ static bool load_and_combine_hashes(hashl &kmer_hash, const std::vector<std::str
 	std::cerr << time(0) << '\n';
 	hashl tmp_hash;			// declare outside loop so memory can get reused
 	// load in reference saved hashes
-	std::vector<std::string>::const_iterator a(files.begin());
-	const std::vector<std::string>::const_iterator end_a(files.end());
-	for (; a != end_a; ++a) {
-		std::cerr << "reading " << *a << '\n';
-		const int fd(open_compressed(*a));
+	for (const auto &file : files) {
+		std::cerr << "reading " << file << '\n';
+		const int fd(open_compressed(file));
 		if (fd == -1) {
-			std::cerr << "Error: could not read saved hash: " << *a << '\n';
+			std::cerr << "Error: could not read saved hash: " << file << '\n';
 			return 0;
 		}
 		tmp_hash.init_from_file(fd);
 		close_compressed(fd);
-		if (a == files.begin()) {	// set the bit width, possibly preallocate
+		if (&file == &files[0]) {	// set the bit width, possibly preallocate
 			std::vector<hashl::base_type> tmp_data;
 			kmer_hash.init(starting_hash_size, tmp_hash.bits(), tmp_data);
 		}
@@ -262,6 +265,11 @@ static void cross_ref_save(const hashl &reference_kmers, hashl &fastq_kmers) {
 	save_hash(fastq_kmers, opt_results_save);
 }
 
+void save_purged_hash(hashl &reference_kmers) {
+	reference_kmers.purge_invalid_values();
+	save_hash(reference_kmers, opt_purged_hash_save);
+}
+
 int main(const int argc, char * const * const argv) {
 	std::cerr << std::fixed << std::setprecision(2);
 	get_opts(argc, argv);
@@ -303,6 +311,10 @@ int main(const int argc, char * const * const argv) {
 	}
 	if (opt_print_histogram) {
 		print_mer_histogram(reference_kmers);
+	}
+	// do this after print_mer_histogram so invalid values still show up in the histogram
+	if (!opt_purged_hash_save.empty()) {
+		save_purged_hash(reference_kmers);
 	}
 	if (optind == argc) {	// just saving the created hash, presumably
 		return 0;
