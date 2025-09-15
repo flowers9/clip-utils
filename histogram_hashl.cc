@@ -453,8 +453,8 @@ static void count_nmers(hashl &mer_list, const std::vector<size_t> &read_ends) {
 // clumpy you lose out in the end by map<> taking longer
 
 template<>
-struct std::hash<hashl::vector_key_type> {
-	std::size_t operator()(const hashl::vector_key_type& k) const noexcept {
+struct std::hash<std::vector<hashl::base_type> > {
+	std::size_t operator()(const std::vector<hashl::base_type> & k) const noexcept {
 		hashl::base_type __x(k[0]);
 		for (size_t __i(1); __i < k.size(); ++__i) {
 			__x ^= k[__i];
@@ -468,7 +468,7 @@ static void count_nmers_window(hashl &mer_list, const std::vector<size_t> &read_
 	// window_mers needs at least window_size entries, but a bit more does help
 	size_t hash_size = 1;
 	for (; hash_size < window_size; hash_size <<= 1) { }
-	std::unordered_map<hashl::vector_key_type, unsigned int> window_mers(hash_size << 1);
+	std::unordered_map<std::vector<hashl::base_type>, unsigned int> window_mers(hash_size << 1);
 	CountState x(mer_list);
 	size_t i = 0, total_read_ranges = 0;
 	// iterate over all reads (nmers can't cross read range boundaries)

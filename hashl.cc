@@ -79,82 +79,6 @@ hashl::hash_offset_type hashl::insert_key(const hash_offset_type i, const data_o
 	return i;
 }
 
-// create key from bit offset into data
-
-void hashl::key_type::copy_in(const std::vector<base_type> &data, const data_offset_type offset) {
-	// start of sequence in data
-	const size_t i(offset / (sizeof(base_type) * 8));
-	// how many bits we have in the first word
-	const base_type starting_bits(sizeof(base_type) * 8 - offset % (sizeof(base_type) * 8));
-	// how many bits the first word is supposed to have for a key
-	const base_type high_bits(bit_shift + 2);
-	if (starting_bits == high_bits) {
-		k[0] = data[i] & high_mask;
-		for (size_t j(1); j < k.size(); ++j) {
-			k[j] = data[i + j];
-		}
-	} else if (starting_bits < high_bits) {		// shift left to fill up first word
-		const int shift_left(high_bits - starting_bits);
-		const int shift_right(sizeof(base_type) * 8 - shift_left);
-		k[0] = ((data[i] << shift_left) | (data[i + 1] >> shift_right)) & high_mask;
-		for (size_t j(1); j < k.size(); ++j) {
-			k[j] = (data[i + j] << shift_left) | (data[i + j + 1] >> shift_right);
-		}
-	} else {					// shift right to empty out first word
-		const int shift_right(starting_bits - high_bits);
-		const int shift_left(sizeof(base_type) * 8 - shift_right);
-		k[0] = (data[i] >> shift_right) & high_mask;
-		for (size_t j(1); j < k.size(); ++j) {
-			k[j] = (data[i + j - 1] << shift_left) | (data[i + j] >> shift_right);
-		}
-	}
-}
-
-// generate internal key from bit offset into data, compare to key;
-// equivalent to above subroutine, just with more breakpoints
-
-bool hashl::key_type::equal(const std::vector<base_type> &data, const data_offset_type offset) const {
-	// start of sequence in data
-	const size_t i(offset / (sizeof(base_type) * 8));
-	// how many bits we have in the first word
-	const base_type starting_bits(sizeof(base_type) * 8 - offset % (sizeof(base_type) * 8));
-	// how many bits the first word is supposed to have for a key
-	const base_type high_offset(bit_shift + 2);
-	if (starting_bits == high_offset) {
-		if (k[0] != (data[i] & high_mask)) {
-			return 0;
-		}
-		for (size_t j(1); j < k.size(); ++j) {
-			if (k[j] != data[i + j]) {
-				return 0;
-			}
-		}
-	} else if (starting_bits < high_offset) {	// shift left to fill up first word
-		const int shift_left(high_offset - starting_bits);
-		const int shift_right(sizeof(base_type) * 8 - shift_left);
-		if (k[0] != (((data[i] << shift_left) | (data[i + 1] >> shift_right)) & high_mask)) {
-			return 0;
-		}
-		for (size_t j(1); j < k.size(); ++j) {
-			if (k[j] != ((data[i + j] << shift_left) | (data[i + j + 1] >> shift_right))) {
-				return 0;
-			}
-		}
-	} else {					// shift right to empty out first word
-		const int shift_right(starting_bits - high_offset);
-		const int shift_left(sizeof(base_type) * 8 - shift_right);
-		if (k[0] != ((data[i] >> shift_right) & high_mask)) {
-			return 0;
-		}
-		for (size_t j(1); j < k.size(); ++j) {
-			if (k[j] != ((data[i + j - 1] << shift_left) | (data[i + j] >> shift_right))) {
-				return 0;
-			}
-		}
-	}
-	return 1;
-}
-
 // find a key, or insert it if it doesn't exist; return modulus if hash is full
 
 hashl::hash_offset_type hashl::insert_offset(const key_type &key, const key_type &comp_key, const data_offset_type offset) {
@@ -173,26 +97,6 @@ hashl::hash_offset_type hashl::insert_offset(const key_type &key, const key_type
 		} else if (key.equal(data, key_list[i]) || comp_key.equal(data, key_list[i])) {
 			return i;
 		}
-	}
-}
-
-// make reverse complement of given key
-// TODO: could be more efficient
-
-void hashl::key_type::make_complement(const hashl::key_type &key) {
-	const size_t bit_width(bit_shift + 2 + (k.size() - 1) * sizeof(base_type) * 8);
-	for (size_t i(0); i < bit_width; i += 2) {
-		push_back(3 - key.basepair(i));
-	}
-}
-
-void hashl::key_type::convert_to_string(std::string &sequence) const {
-	const char values[4] = { 'A', 'C', 'G', 'T' };
-	sequence.clear();
-	const size_t bit_width(bit_shift + 2 + (k.size() - 1) * sizeof(base_type) * 8);
-	// relies on wrap-around for termination
-	for (size_t i(bit_width - 2); i < bit_width; i -= 2) {
-		sequence += values[basepair(i)];
 	}
 }
 

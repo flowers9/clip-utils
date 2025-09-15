@@ -7,6 +7,7 @@
 //
 // key values are offsets into an internal array; a metadata blob is also stored
 
+#include "hashl_key_type.h"	// hashl_key_type<>
 #include <limits.h>	// UCHAR_MAX, ULONG_MAX
 #include <stdint.h>	// uint64_t
 #include <string>	// string
@@ -19,74 +20,9 @@ class hashl {
 	typedef unsigned long hash_offset_type;
 	typedef unsigned long data_offset_type;
 	typedef uint64_t base_type;
-	typedef std::vector<base_type> vector_key_type;
+	typedef hashl_key_type<hashl> key_type;
 	// invalid_value must be greater than max_small_value
 	enum { max_small_value = UCHAR_MAX - 1, invalid_value = UCHAR_MAX, invalid_key = ULONG_MAX };
-
-	class key_type {
-	    private:
-		vector_key_type k;		// stored in reverse - high word in [0]
-	    public:
-		void copy_in(const std::vector<base_type> &, const data_offset_type);
-		bool operator==(const key_type &__a) const {
-			for (size_t __i(0); __i < k.size(); ++__i) {
-				if (k[__i] != __a.k[__i]) {
-					return 0;
-				}
-			}
-			return 1;
-		}
-		bool operator!=(const key_type &__a) const {
-			return !(*this == __a);
-		}
-		base_type hash() const noexcept {
-			base_type __x(k[0]);
-			for (size_t __i(1); __i < k.size(); ++__i) {
-				__x ^= k[__i];
-			}
-			return __x;
-		}
-		int basepair(const size_t __i) const {
-			const size_t __n(__i / (sizeof(base_type) * 8));
-			return (k[k.size() - 1 - __n] >> (__i - __n * sizeof(base_type) * 8)) & 3;
-		}
-	    private:
-		const size_t bit_shift;		// precalc for push_front
-		const base_type high_mask;	// precalc for push_back
-	    public:
-		explicit key_type(const hashl &__a) : k(__a.words(), 0), bit_shift((__a.bits() - 2) % (sizeof(base_type) * 8)), high_mask(static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - __a.bits() % (sizeof(base_type) * 8))) { }
-		~key_type() { }
-		bool operator<(const key_type &__a) const {
-			for (size_t __i(0); __i != k.size(); ++__i) {
-				if (k[__i] != __a.k[__i]) {
-					return k[__i] < __a.k[__i];
-				}
-			}
-			return 0;
-		}
-		void push_back(const base_type __x) {
-			const size_t __n(sizeof(base_type) * 8 - 2);
-			size_t __i(0);
-			for (; __i < k.size() - 1; ++__i) {
-				k[__i] = (k[__i] << 2) | (k[__i + 1] >> __n);
-			}
-			k[__i] = (k[__i] << 2) | __x;
-			k[0] &= high_mask;
-		}
-		void push_front(const base_type __x) {
-			const size_t __n(sizeof(base_type) * 8 - 2);
-			for (size_t __i(k.size() - 1); __i > 0; --__i) {
-				k[__i] = (k[__i - 1] << __n) | (k[__i] >> 2);
-			}
-			k[0] = (__x << bit_shift) | (k[0] >> 2);
-		}
-		void make_complement(const key_type &);
-		void convert_to_string(std::string &) const;
-		bool equal(const std::vector<base_type> &, const data_offset_type) const;
-		const vector_key_type &value() const {
-			return k;
-		}
-	};
 
 	class iterator {
 	    private:
