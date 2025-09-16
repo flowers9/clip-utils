@@ -71,9 +71,6 @@ void hashl::init_from_file(const int fd) {
 // insert a key at a particular location
 
 hashl::hash_offset_type hashl::insert_key(const hash_offset_type i, const data_offset_type offset) {
-	if (used_elements == modulus) {	// should never happen
-		return modulus;		// hash table is full
-	}
 	++used_elements;
 	key_list[i] = offset;
 	value_list[i] = 0;
@@ -83,6 +80,9 @@ hashl::hash_offset_type hashl::insert_key(const hash_offset_type i, const data_o
 // find a key, or insert it if it doesn't exist; return modulus if hash is full
 
 hashl::hash_offset_type hashl::insert_offset(const key_type &key, const key_type &comp_key, const data_offset_type offset) {
+	if (used_elements == modulus) {
+		return modulus;		// hash table is full
+	}
 	const base_type key_hash(key < comp_key ? key.hash() : comp_key.hash());
 	hash_offset_type i(key_hash % modulus);
 	if (key_list[i] == invalid_key) {		// insert
@@ -407,7 +407,6 @@ void hashl::filtering_finish(const hashl::small_value_type min, const hashl::sma
 	}
 }
 
-#if 0
 void hashl::save_index(const int fd) {
 	// invalidate keys for any invalid_values
 	for (hash_offset_type i(0); i < modulus; ++i) {
@@ -416,7 +415,7 @@ void hashl::save_index(const int fd) {
 			--used_elements;
 		}
 	}
-	// we no longer need the values
+	// we no longer need the values, so free memory
 	value_list = std::vector<small_value_type>();
 	// shift valid key_list entries to bottom of array
 	if (used_elements < modulus) {
@@ -424,16 +423,12 @@ void hashl::save_index(const int fd) {
 		auto end_a = a + used_elements;
 		for (; *a != invalid_key; ++a) { }
 		for (auto b = end_a; a != end_a; ++b) {
-			for (; b == invalid_key; ++b) { }
-			std::swap(*a, *b):
+			for (; *b == invalid_key; ++b) { }
+			std::swap(*a, *b);
 			for (++a; *a != invalid_value; ++a) { }
-			if (a == end_a) {
-				break;
-			}
 		}
 	}
 	// remove invalid entries
 	key_list.resize(used_elements);
 	// XXX - sort key_list by *kmer*
 }
-#endif
