@@ -71,7 +71,10 @@ void hashl::init_from_file(const int fd) {
 // insert a key at a particular location
 
 hashl::hash_offset_type hashl::insert_key(const hash_offset_type i, const data_offset_type offset) {
-	++used_elements;
+	if (++used_elements == modulus) {
+		--used_elements;	// hash table is full
+		return modulus;		// (always leave one empty value to mark end)
+	}
 	key_list[i] = offset;
 	value_list[i] = 0;
 	return i;
@@ -80,9 +83,6 @@ hashl::hash_offset_type hashl::insert_key(const hash_offset_type i, const data_o
 // find a key, or insert it if it doesn't exist; return modulus if hash is full
 
 hashl::hash_offset_type hashl::insert_offset(const key_type &key, const key_type &comp_key, const data_offset_type offset) {
-	if (used_elements == modulus) {
-		return modulus;		// hash table is full
-	}
 	const base_type key_hash(key < comp_key ? key.hash() : comp_key.hash());
 	hash_offset_type i(key_hash % modulus);
 	if (key_list[i] == invalid_key) {		// insert
