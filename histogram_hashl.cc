@@ -452,23 +452,12 @@ static void count_nmers(hashl &mer_list, const std::vector<size_t> &read_ends) {
 // note: while a simpler hash may be quicker to hash, if it groups more
 // clumpy you lose out in the end by map<> taking longer
 
-template<>
-struct std::hash<std::vector<hashl::base_type> > {
-	std::size_t operator()(const std::vector<hashl::base_type> & k) const noexcept {
-		hashl::base_type __x(k[0]);
-		for (size_t __i(1); __i < k.size(); ++__i) {
-			__x ^= k[__i];
-		}
-		return __x;
-	}
-};      
-
 static void count_nmers_window(hashl &mer_list, const std::vector<size_t> &read_ends, const size_t window_size, const size_t max_repeats) {
 	std::vector<hashl::base_type> data_copy(mer_list.get_data());
 	// window_mers needs at least window_size entries, but a bit more does help
 	size_t hash_size = 1;
 	for (; hash_size < window_size; hash_size <<= 1) { }
-	std::unordered_map<std::vector<hashl::base_type>, unsigned int> window_mers(hash_size << 1);
+	std::unordered_map<std::vector<hashl::base_type>, unsigned int, hashl_key_hash<hashl> > window_mers(hash_size << 1);
 	CountState x(mer_list);
 	size_t i = 0, total_read_ranges = 0;
 	// iterate over all reads (nmers can't cross read range boundaries)

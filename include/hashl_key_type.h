@@ -158,4 +158,21 @@ class hashl_key_type {
 	}
 };
 
+// a hash for broken-out keys (i.e., just the plain vector)
+
+template<class T>
+class hashl_key_hash {
+    private:
+	typedef typename T::base_type base_type;
+	typedef typename std::vector<base_type>::size_type size_type;
+    public:
+	size_type operator()(const std::vector<base_type> &k) const noexcept {
+		base_type __x(k[0]);
+		for (size_type __i(1); __i < k.size(); ++__i) {
+			__x ^= k[__i];
+		}
+		return __x;
+	}
+};
+
 #endif // !_HASHL_KEY_TYPE_H

@@ -5,6 +5,7 @@
 #include "next_prime.h"	// next_prime()
 #include "open_compressed.h"	// pfread()
 #include "write_fork.h"	// pfwrite()
+#include <algorithm>	// sort(), swap()
 #include <iomanip>	// setw()
 #include <iostream>	// cerr, cout
 #include <map>		// map<>
@@ -70,7 +71,7 @@ void hashl::init_from_file(const int fd) {
 // insert a key at a particular location
 
 hashl::hash_offset_type hashl::insert_key(const hash_offset_type i, const data_offset_type offset) {
-	if (used_elements == modulus) {
+	if (used_elements == modulus) {	// should never happen
 		return modulus;		// hash table is full
 	}
 	++used_elements;
@@ -405,3 +406,34 @@ void hashl::filtering_finish(const hashl::small_value_type min, const hashl::sma
 		value_list_backup.clear();
 	}
 }
+
+#if 0
+void hashl::save_index(const int fd) {
+	// invalidate keys for any invalid_values
+	for (hash_offset_type i(0); i < modulus; ++i) {
+		if (value_list[i] == invalid_value) {
+			key_list[i] = invalid_key;
+			--used_elements;
+		}
+	}
+	// we no longer need the values
+	value_list = std::vector<small_value_type>();
+	// shift valid key_list entries to bottom of array
+	if (used_elements < modulus) {
+		auto a = key_list.begin();
+		auto end_a = a + used_elements;
+		for (; *a != invalid_key; ++a) { }
+		for (auto b = end_a; a != end_a; ++b) {
+			for (; b == invalid_key; ++b) { }
+			std::swap(*a, *b):
+			for (++a; *a != invalid_value; ++a) { }
+			if (a == end_a) {
+				break;
+			}
+		}
+	}
+	// remove invalid entries
+	key_list.resize(used_elements);
+	// XXX - sort key_list by *kmer*
+}
+#endif
