@@ -4,6 +4,23 @@
 #include <string>	// string
 #include <vector>	// vector<>
 
+// a hash for broken-out keys (i.e., just the plain vector)
+
+template<class T>
+class hashl_key_hash {
+    private:
+	typedef typename T::base_type base_type;
+	typedef typename std::vector<base_type>::size_type size_type;
+    public:
+	base_type operator()(const std::vector<base_type> &k) const noexcept {
+		base_type __x(k[0]);
+		for (size_type __i(1); __i < k.size(); ++__i) {
+			__x ^= k[__i];
+		}
+		return __x;
+	}
+};
+
 template<class T>
 class hashl_key_type {
     private:
@@ -28,11 +45,7 @@ class hashl_key_type {
 		return !(*this == __a);
 	}
 	base_type hash() const noexcept {
-		base_type __x(k[0]);
-		for (size_type __i(1); __i < k.size(); ++__i) {
-			__x ^= k[__i];
-		}
-		return __x;
+		return hashl_key_hash<T>()(k);
 	}
 	int basepair(const size_type __i) const {
 		const size_type __n(__i / (sizeof(base_type) * 8));
@@ -42,6 +55,7 @@ class hashl_key_type {
 	const size_type bit_shift;	// precalc for push_front
 	const base_type high_mask;	// precalc for push_back
     public:
+	// XXX - does high_mask have a problem when __a.bits() is a multiple of sizeof(base_type) * 8?
 	explicit hashl_key_type(const T &__a) : k(__a.words(), 0), bit_shift((__a.bits() - 2) % (sizeof(base_type) * 8)), high_mask(static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - __a.bits() % (sizeof(base_type) * 8))) { }
 	~hashl_key_type() { }
 	bool operator<(const hashl_key_type &__a) const {
@@ -69,7 +83,7 @@ class hashl_key_type {
 		k[0] = (__x << bit_shift) | (k[0] >> 2);
 	}
 
-	// make reverse complement of given key (TODO: could be more efficient)
+	// make reverse complement of given key (TODO: could probably be more efficient)
 	void make_complement(const hashl_key_type &key) {
 		const size_type bit_width(bit_shift + 2 + (k.size() - 1) * sizeof(base_type) * 8);
 		for (size_type i(0); i < bit_width; i += 2) {
@@ -155,23 +169,6 @@ class hashl_key_type {
 			}
 		}
 		return 1;
-	}
-};
-
-// a hash for broken-out keys (i.e., just the plain vector)
-
-template<class T>
-class hashl_key_hash {
-    private:
-	typedef typename T::base_type base_type;
-	typedef typename std::vector<base_type>::size_type size_type;
-    public:
-	size_type operator()(const std::vector<base_type> &k) const noexcept {
-		base_type __x(k[0]);
-		for (size_type __i(1); __i < k.size(); ++__i) {
-			__x ^= k[__i];
-		}
-		return __x;
 	}
 };
 

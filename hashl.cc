@@ -407,6 +407,7 @@ void hashl::filtering_finish(const hashl::small_value_type min, const hashl::sma
 	}
 }
 
+#if 0
 void hashl::save_index(const int fd) {
 	// invalidate keys for any invalid_values
 	for (hash_offset_type i(0); i < modulus; ++i) {
@@ -418,6 +419,7 @@ void hashl::save_index(const int fd) {
 	// we no longer need the values, so free memory
 	value_list = std::vector<small_value_type>();
 	// shift valid key_list entries to bottom of array
+	// TODO: would this be faster if we made it part of the sort?
 	if (used_elements < modulus) {
 		auto a = key_list.begin();
 		auto end_a = a + used_elements;
@@ -430,5 +432,66 @@ void hashl::save_index(const int fd) {
 	}
 	// remove invalid entries
 	key_list.resize(used_elements);
-	// XXX - sort key_list by *kmer*
+	// XXX - sort key_list by *kmer* (not kmer position ;)
+	class key_list_comp {
+		bool operator(hashl &c)(const base_type &a, const base_type &b) const {
+		}
+	};
+	std::sort(key_list.begin(), key_list.end(), key_list_comp(*this));
 }
+#endif
+
+// this is a little tricky, as the offsets generally don't line up with the data storage
+// (c.f., hashl_key_type::equal())
+
+#if 0
+bool hashl::compare_kmers(const hash_offset_type &a, const hash_offset_type &b) const {
+	const size_type a_i(a / (sizeof(base_type) * 8));
+	const unsigned int a_starting_bits(sizeof(base_type) * 8 - a % (sizeof(base_type) * 8));
+	const size_type b_i(b / (sizeof(base_type) * 8));
+	const unsigned int b_starting_bits(sizeof(base_type) * 8 - b % (sizeof(base_type) * 8));
+	if (a_starting_bits == b_starting_bits) {
+		base_type mask = static_cast<base_type>(-1) >> a_starting_bits;
+		if (a_starting_bits > bit_width) {
+			base_type 
+		}
+	} else if (a_starting_bits < b_starting_bits) {
+	} else {
+	}
+
+	const unsigned int high_offset = bit_shift + 2;
+	if (starting_bits == high_offset) {
+		if (k[0] != (data[i] & high_mask)) {
+			return 0;
+		}
+		for (size_type j(1); j < k.size(); ++j) {
+			if (k[j] != data[i + j]) {
+				return 0;
+			}
+		}
+	} else if (starting_bits < high_offset) {
+		const unsigned int shift_left(high_offset - starting_bits);
+		const unsigned int shift_right(sizeof(base_type) * 8 - shift_left);
+		if (k[0] != (((data[i] << shift_left) | (data[i + 1] >> shift_right)) & high_mask)) {
+			return 0;
+		}
+		for (size_type j(1); j < k.size(); ++j) {
+			if (k[j] != ((data[i + j] << shift_left) | (data[i + j + 1] >> shift_right))) {
+				return 0;
+			}
+		}
+	} else {
+		const unsigned int shift_right(starting_bits - high_offset);
+		const unsigned int shift_left(sizeof(base_type) * 8 - shift_right);
+		if (k[0] != ((data[i] >> shift_right) & high_mask)) {
+			return 0;
+		}
+		for (size_type j(1); j < k.size(); ++j) {
+			if (k[j] != ((data[i + j - 1] << shift_left) | (data[i + j] >> shift_right))) {
+				return 0;
+			}
+		}
+	}
+	return 1;
+}
+#endif

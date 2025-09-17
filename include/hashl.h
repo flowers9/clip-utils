@@ -90,7 +90,7 @@ class hashl {
 		const_iterator(const const_iterator &a) : list(a.list), offset_(a.offset_) { }
 		~const_iterator() { }
 		// value()/key() undefined if called when pointing to end()
-		const small_value_type &operator*() const {
+		const value_type &operator*() const {
 			return list.value_list[offset_];
 		}
 		const hash_offset_type &offset() const {
@@ -215,7 +215,10 @@ class hashl {
 	// restore value_list for values in min-max, set to invalid_value for rest
 	void filtering_finish(small_value_type min, small_value_type max);
 	// this destroys the hash, as it involves sorting key_list in place
-	void save_index(int);
+	//void save_index(int);
+    private:
+	// return if kmer(a) < kmer(b)
+	//bool compare_kmers(const data_offset_type &a, const data_offset_type &b) const;
 };
 
 #endif // !_HASHL_H
