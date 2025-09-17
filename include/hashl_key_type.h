@@ -103,26 +103,26 @@ class hashl_key_type {
 	// create key from bit offset into data
 	void copy_in(const std::vector<base_type> &data, const data_offset_type offset) {
 		// start of sequence in data
-		const size_type i(offset / (sizeof(base_type) * 8));
+		const size_type i = offset / (sizeof(base_type) * 8);
 		// how many bits we have in the first word
-		const base_type starting_bits(sizeof(base_type) * 8 - offset % (sizeof(base_type) * 8));
+		const base_type starting_bit = sizeof(base_type) * 8 - offset % (sizeof(base_type) * 8);
 		// how many bits the first word is supposed to have for a key
-		const base_type high_bits(bit_shift + 2);
-		if (starting_bits == high_bits) {
+		const base_type high_bit = bit_shift + 2;
+		if (starting_bit == high_bit) {
 			k[0] = data[i] & high_mask;
 			for (size_type j(1); j < k.size(); ++j) {
 				k[j] = data[i + j];
 			}
-		} else if (starting_bits < high_bits) {		// shift left to fill up first word
-			const int shift_left(high_bits - starting_bits);
-			const int shift_right(sizeof(base_type) * 8 - shift_left);
+		} else if (starting_bit < high_bit) {		// shift left to fill up first word
+			const unsigned int shift_left = high_bit - starting_bit;
+			const unsigned int shift_right = sizeof(base_type) * 8 - shift_left;
 			k[0] = ((data[i] << shift_left) | (data[i + 1] >> shift_right)) & high_mask;
 			for (size_type j(1); j < k.size(); ++j) {
 				k[j] = (data[i + j] << shift_left) | (data[i + j + 1] >> shift_right);
 			}
 		} else {					// shift right to empty out first word
-			const int shift_right(starting_bits - high_bits);
-			const int shift_left(sizeof(base_type) * 8 - shift_right);
+			const unsigned int shift_right = starting_bit - high_bit;
+			const unsigned int shift_left = sizeof(base_type) * 8 - shift_right;
 			k[0] = (data[i] >> shift_right) & high_mask;
 			for (size_type j(1); j < k.size(); ++j) {
 				k[j] = (data[i + j - 1] << shift_left) | (data[i + j] >> shift_right);
@@ -132,10 +132,10 @@ class hashl_key_type {
 
 	// same as copy_in(), but with breakpoints and not saving the generated key
 	bool equal(const std::vector<base_type> &data, const data_offset_type offset) const {
-		const size_type i(offset / (sizeof(base_type) * 8));
-		const base_type starting_bits(sizeof(base_type) * 8 - offset % (sizeof(base_type) * 8));
-		const base_type high_offset(bit_shift + 2);
-		if (starting_bits == high_offset) {
+		const size_type i = offset / (sizeof(base_type) * 8);
+		const base_type starting_bit = sizeof(base_type) * 8 - offset % (sizeof(base_type) * 8);
+		const base_type high_offset = bit_shift + 2;
+		if (starting_bit == high_offset) {
 			if (k[0] != (data[i] & high_mask)) {
 				return 0;
 			}
@@ -144,9 +144,9 @@ class hashl_key_type {
 					return 0;
 				}
 			}
-		} else if (starting_bits < high_offset) {
-			const int shift_left(high_offset - starting_bits);
-			const int shift_right(sizeof(base_type) * 8 - shift_left);
+		} else if (starting_bit < high_offset) {
+			const unsigned int shift_left = high_offset - starting_bit;
+			const unsigned int shift_right = sizeof(base_type) * 8 - shift_left;
 			if (k[0] != (((data[i] << shift_left) | (data[i + 1] >> shift_right)) & high_mask)) {
 				return 0;
 			}
@@ -156,8 +156,8 @@ class hashl_key_type {
 				}
 			}
 		} else {
-			const int shift_right(starting_bits - high_offset);
-			const int shift_left(sizeof(base_type) * 8 - shift_right);
+			const unsigned int shift_right = starting_bit - high_offset;
+			const unsigned int shift_left = sizeof(base_type) * 8 - shift_right;
 			if (k[0] != ((data[i] >> shift_right) & high_mask)) {
 				return 0;
 			}

@@ -30,7 +30,7 @@ std::string hashl::boilerplate(void) const {
 	return s;
 }
 
-void hashl::init(const hash_offset_type size_asked, const size_t bits_in, std::vector<base_type> &data_in) {
+void hashl::init(const hash_offset_type size_asked, const size_type bits_in, std::vector<base_type> &data_in) {
 	bit_width = bits_in;
 	word_width = (bit_width + 8 * sizeof(base_type) - 1) / (8 * sizeof(base_type));
 	data.swap(data_in);
@@ -219,7 +219,7 @@ void hashl::resize(hash_offset_type size_asked) {
 	if (size_asked < used_elements) {
 		return;
 	}
-	const size_t old_modulus(modulus);
+	const size_type old_modulus(modulus);
 	if (size_asked < 3) {	// to avoid collision_modulus == modulus
 		size_asked = 3;
 	}
@@ -270,12 +270,12 @@ void hashl::purge_invalid_values() {
 
 bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_value_type max_cutoff) {
 	// total possible elements, actually, as there may be duplicates
-	const size_t total_elements(used_elements + a.used_elements);
+	const size_type total_elements(used_elements + a.used_elements);
 	if (total_elements > modulus * .7) {	// max load of 70%
 		resize(total_elements * 2);	// aim for 50% load
 	}
 	// copy over data (and make sure to update offsets when adding new entries)
-	const size_t offset(data.size() * sizeof(base_type) * 8);
+	const size_type offset(data.size() * sizeof(base_type) * 8);
 	// this pads out the existing data so we don't have to shift all the new data
 	// TODO: see if shifting would actually slow things down much
 	//       and change metadata to remove padding there, as well
@@ -283,7 +283,7 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 	data.insert(data.end(), a.data.begin(), a.data.end());
 	// loop over incoming hash and increment or invalidate entries as needed
 	key_type key(a), comp_key(a);
-	for (size_t i(0); i < a.modulus; ++i) {
+	for (size_type i(0); i < a.modulus; ++i) {
 		if (a.key_list[i] != invalid_key) {
 			key.copy_in(a.data, a.key_list[i]);
 			comp_key.make_complement(key);
@@ -303,7 +303,7 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 	if (!metadata.empty() && !a.metadata.empty()) {
 		// extract metadata from blobs (both ours and a's)
 		our_md.unpack(metadata);
-		const size_t padding(offset - our_md.sequence_length());
+		const size_type padding(offset - our_md.sequence_length());
 		a_md.unpack(a.metadata);
 		our_md.add(a_md, padding);
 		our_md.pack(metadata);
@@ -319,9 +319,9 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 		our_md.pack(metadata);
 	} else if (!metadata.empty() && !a.data.empty()) {	// pad a's, then add to ours
 		our_md.unpack(metadata);
-		const size_t padding(offset - our_md.sequence_length());
+		const size_type padding(offset - our_md.sequence_length());
 		// add dummy entry for a
-		const size_t a_offset(a.data.size() * sizeof(base_type) * 8);
+		const size_type a_offset(a.data.size() * sizeof(base_type) * 8);
 		a_md.add_filename("unknown");
 		a_md.add_readname("padding");
 		a_md.add_read_range(0, a_offset);
@@ -335,8 +335,8 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 
 void hashl::print(void) const {
 	int max_offset_width(1), max_key_width(1);
-	for (size_t i(10); i < modulus; i *= 10, ++max_offset_width) { }
-	for (size_t i(10); i < data.size() * sizeof(base_type) * 8; i *= 10, ++max_key_width) { }
+	for (size_type i(10); i < modulus; i *= 10, ++max_offset_width) { }
+	for (size_type i(10); i < data.size() * sizeof(base_type) * 8; i *= 10, ++max_key_width) { }
 	std::cout << "modulus: " << modulus << "\n"
 		<< "collision modulus: " << collision_modulus << "\n"
 		<< "used elements: " << used_elements << "\n"
@@ -358,8 +358,8 @@ void hashl::print(void) const {
 void hashl::get_sequence(const data_offset_type start, const data_offset_type length, std::string &seq) const {
 	const char values[4] = { 'A', 'C', 'G', 'T' };
 	seq.clear();
-	size_t word_offset(start / (sizeof(base_type) * 8));
-	size_t bit_offset(sizeof(base_type) * 8 - start % (sizeof(base_type) * 8));
+	size_type word_offset(start / (sizeof(base_type) * 8));
+	size_type bit_offset(sizeof(base_type) * 8 - start % (sizeof(base_type) * 8));
 	for (data_offset_type i(0); i < length; i += 2) {
 		if (bit_offset) {
 			bit_offset -= 2;
@@ -407,7 +407,6 @@ void hashl::filtering_finish(const hashl::small_value_type min, const hashl::sma
 	}
 }
 
-#if 0
 void hashl::save_index(const int fd) {
 	// invalidate keys for any invalid_values
 	for (hash_offset_type i(0); i < modulus; ++i) {
@@ -432,66 +431,105 @@ void hashl::save_index(const int fd) {
 	}
 	// remove invalid entries
 	key_list.resize(used_elements);
+#if 0
 	// XXX - sort key_list by *kmer* (not kmer position ;)
 	class key_list_comp {
 		bool operator(hashl &c)(const base_type &a, const base_type &b) const {
 		}
 	};
 	std::sort(key_list.begin(), key_list.end(), key_list_comp(*this));
-}
 #endif
+}
 
 // this is a little tricky, as the offsets generally don't line up with the data storage
 // (c.f., hashl_key_type::equal())
 
-#if 0
 bool hashl::compare_kmers(const hash_offset_type &a, const hash_offset_type &b) const {
-	const size_type a_i(a / (sizeof(base_type) * 8));
-	const unsigned int a_starting_bits(sizeof(base_type) * 8 - a % (sizeof(base_type) * 8));
-	const size_type b_i(b / (sizeof(base_type) * 8));
-	const unsigned int b_starting_bits(sizeof(base_type) * 8 - b % (sizeof(base_type) * 8));
-	if (a_starting_bits == b_starting_bits) {
-		base_type mask = static_cast<base_type>(-1) >> a_starting_bits;
-		if (a_starting_bits > bit_width) {
-			base_type 
+	const size_type a_i = a / (sizeof(base_type) * 8);
+	const unsigned int a_starting_bit = sizeof(base_type) * 8 - a % (sizeof(base_type) * 8);
+	const size_type b_i = b / (sizeof(base_type) * 8);
+	const unsigned int b_starting_bit = sizeof(base_type) * 8 - b % (sizeof(base_type) * 8);
+	if (a_starting_bit == b_starting_bit) {
+		// compare starting bits
+		base_type mask = static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - a_starting_bit);
+		if (a_starting_bit == bit_width) {
+			return (data[a_i] & mask) < (data[b_i] & mask);
+		} else if (a_starting_bit > bit_width) {
+			// if the kmer doesn't reach the right side of word, adjust mask
+			mask ^= static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - a_starting_bit + bit_width);
+			return (data[a_i] & mask) < (data[b_i] & mask);
+		} else if ((data[a_i] & mask) != (data[b_i] & mask)) {
+			return (data[a_i] & mask) < (data[b_i] & mask);
 		}
-	} else if (a_starting_bits < b_starting_bits) {
-	} else {
+		// compare all full words
+		const size_type words = (bit_width - a_starting_bit) / (sizeof(base_type) * 8) + 1;
+		for (size_type j(1); j < words; ++j) {
+			if (data[a_i + j] != data[b_i + j]) {
+				return data[a_i + j] < data[b_i + j];
+			}
+		}
+		// compare any trailing bits
+		const size_type trailing_bit = (bit_width - a_starting_bit) % (sizeof(base_type) * 8);
+		if (trailing_bit == 0) {
+			return 0;
+		}
+		mask = static_cast<base_type>(-1) << (sizeof(base_type) * 8 - trailing_bit);
+		return (data[a_i + words] & mask) < (data[b_i + words] & mask);
+	} else if (a_starting_bit < b_starting_bit) {		// shift b right to align with a
+		// compare starting bits
+		const unsigned int shift_right = b_starting_bit - a_starting_bit;
+		base_type mask = static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - a_starting_bit);
+		if (a_starting_bit == bit_width) {
+			return (data[a_i] & mask) < ((data[b_i] >> shift_right) & mask);
+		} else if (a_starting_bit > bit_width) {
+			// if the kmer doesn't reach the right side of word, adjust mask
+			mask ^= static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - a_starting_bit + bit_width);
+			return (data[a_i] & mask) < ((data[b_i] >> shift_right) & mask);
+		} else if ((data[a_i] & mask) != ((data[b_i] >> shift_right) & mask)) {
+			return (data[a_i] & mask) < ((data[b_i] >> shift_right) & mask);
+		}
+		// compare all full words
+		const unsigned int shift_left = sizeof(base_type) * 8 - shift_right;
+		const size_type words = (bit_width - a_starting_bit) / (sizeof(base_type) * 8) + 1;
+		for (size_type j(1); j < words; ++j) {
+			if (data[a_i + j] != ((data[b_i + j - 1] << shift_left) | (data[b_i + j] >> shift_right))) {
+				return data[a_i + j] < ((data[b_i + j - 1] << shift_left) | (data[b_i + j] >> shift_right));
+			}
+		}
+		// compare any trailing bits
+		const size_type trailing_bit = (bit_width - a_starting_bit) % (sizeof(base_type) * 8);
+		if (trailing_bit == 0) {
+			return 0;
+		}
+		mask = static_cast<base_type>(-1) << (sizeof(base_type) * 8 - trailing_bit);
+		return data[a_i + words] < ((data[b_i + words - 1] << shift_left) | (data[b_i + words] >> shift_right));
+	} else {						// shift a right to align with b
+		// compare starting bits
+		const unsigned int shift_right = a_starting_bit - b_starting_bit;
+		base_type mask = static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - b_starting_bit);
+		if (b_starting_bit == bit_width) {
+			return ((data[a_i] >> shift_right) & mask) < (data[b_i] & mask);
+		} else if (b_starting_bit > bit_width) {
+			// if the kmer doesn't reach the right side of word, adjust mask
+			mask ^= static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - b_starting_bit + bit_width);
+			return ((data[a_i] >> shift_right) & mask) < (data[b_i] & mask);
+		} else if ((data[b_i] & mask) != ((data[a_i] >> shift_right) & mask)) {
+			return ((data[a_i] >> shift_right) & mask) < (data[b_i] & mask);
+		}
+		// compare all full words
+		const unsigned int shift_left = sizeof(base_type) * 8 - shift_right;
+		const size_type words = (bit_width - b_starting_bit) / (sizeof(base_type) * 8) + 1;
+		for (size_type j(1); j < words; ++j) {
+			if (data[b_i + j] != ((data[a_i + j - 1] << shift_left) | (data[a_i + j] >> shift_right))) {
+				return ((data[a_i + j - 1] << shift_left) | (data[a_i + j] >> shift_right)) < data[b_i + j];
+			}
+		}
+		// compare any trailing bits
+		const size_type trailing_bit = (bit_width - b_starting_bit) % (sizeof(base_type) * 8);
+		if (trailing_bit == 0) {
+			return 0;
+		}
+		mask = static_cast<base_type>(-1) << (sizeof(base_type) * 8 - trailing_bit);
+		return ((data[a_i + words - 1] << shift_left) | (data[a_i + words] >> shift_right)) < data[b_i + words];
 	}
-
-	const unsigned int high_offset = bit_shift + 2;
-	if (starting_bits == high_offset) {
-		if (k[0] != (data[i] & high_mask)) {
-			return 0;
-		}
-		for (size_type j(1); j < k.size(); ++j) {
-			if (k[j] != data[i + j]) {
-				return 0;
-			}
-		}
-	} else if (starting_bits < high_offset) {
-		const unsigned int shift_left(high_offset - starting_bits);
-		const unsigned int shift_right(sizeof(base_type) * 8 - shift_left);
-		if (k[0] != (((data[i] << shift_left) | (data[i + 1] >> shift_right)) & high_mask)) {
-			return 0;
-		}
-		for (size_type j(1); j < k.size(); ++j) {
-			if (k[j] != ((data[i + j] << shift_left) | (data[i + j + 1] >> shift_right))) {
-				return 0;
-			}
-		}
-	} else {
-		const unsigned int shift_right(starting_bits - high_offset);
-		const unsigned int shift_left(sizeof(base_type) * 8 - shift_right);
-		if (k[0] != ((data[i] >> shift_right) & high_mask)) {
-			return 0;
-		}
-		for (size_type j(1); j < k.size(); ++j) {
-			if (k[j] != ((data[i + j - 1] << shift_left) | (data[i + j] >> shift_right))) {
-				return 0;
-			}
-		}
-	}
-	return 1;
 }
-#endif

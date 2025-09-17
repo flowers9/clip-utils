@@ -21,6 +21,7 @@ class hashl {
 	typedef unsigned long data_offset_type;
 	typedef uint64_t base_type;
 	typedef hashl_key_type<hashl> key_type;
+	typedef typename std::vector<base_type>::size_type size_type;
 	// invalid_value must be greater than max_small_value
 	enum { max_small_value = UCHAR_MAX - 1, invalid_value = UCHAR_MAX, invalid_key = ULONG_MAX };
 
@@ -130,8 +131,8 @@ class hashl {
 	hash_offset_type used_elements;
 	hash_offset_type modulus;
 	hash_offset_type collision_modulus;
-	size_t bit_width;
-	size_t word_width;
+	size_type bit_width;
+	size_type word_width;
     protected:
 	std::string boilerplate() const;
 	hash_offset_type find_offset(const key_type &key) const;
@@ -142,12 +143,12 @@ class hashl {
     public:
 	explicit hashl() : used_elements(0), modulus(0), collision_modulus(0), bit_width(0), word_width(0) { }
 	// size of hash, bit size of key_type, sequence data
-	explicit hashl(const hash_offset_type size, const size_t bits, std::vector<base_type> &data_in) {
+	explicit hashl(const hash_offset_type size, const size_type bits, std::vector<base_type> &data_in) {
 		init(size, bits, data_in);
 	}
 	~hashl() { }
 	// this trashes data_in by swapping it into the hash
-	void init(hash_offset_type size, size_t bits, std::vector<base_type> &data_in);
+	void init(hash_offset_type size, size_type bits, std::vector<base_type> &data_in);
 	void init_from_file(int);
 	// will not insert new key
 	void increment(const key_type &key, const key_type &comp_key);
@@ -168,10 +169,10 @@ class hashl {
 	bool empty() const {
 		return used_elements == 0;
 	}
-	size_t bits() const {
+	size_type bits() const {
 		return bit_width;
 	}
-	size_t words() const {
+	size_type words() const {
 		return word_width;
 	}
 	const_iterator cbegin() const {
@@ -215,10 +216,10 @@ class hashl {
 	// restore value_list for values in min-max, set to invalid_value for rest
 	void filtering_finish(small_value_type min, small_value_type max);
 	// this destroys the hash, as it involves sorting key_list in place
-	//void save_index(int);
+	void save_index(int);
     private:
 	// return if kmer(a) < kmer(b)
-	//bool compare_kmers(const data_offset_type &a, const data_offset_type &b) const;
+	bool compare_kmers(const data_offset_type &a, const data_offset_type &b) const;
 };
 
 #endif // !_HASHL_H
