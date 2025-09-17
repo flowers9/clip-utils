@@ -72,9 +72,8 @@ void hashl::init_from_file(const int fd) {
 // insert a key at a particular location
 
 hashl::hash_offset_type hashl::insert_key(const hash_offset_type i, const data_offset_type offset) {
-	if (++used_elements == modulus) {
-		--used_elements;	// hash table is full
-		return modulus;		// (always leave one empty value to mark end)
+	if (++used_elements == modulus) {	// hash table is full
+		return used_elements--;		// (always leave one empty value to mark end)
 	}
 	key_list[i] = offset;
 	value_list[i] = 0;
