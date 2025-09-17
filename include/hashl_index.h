@@ -13,31 +13,29 @@
 //
 // key values are offsets into an internal array; a metadata blob is also stored
 
-#include "hashl.h"
 #include "hashl_key_type.h"	// hashl_key_type<>
 #include <stdint.h>	// uint64_t
 #include <string>	// string
-#include <sys/types.h>	// size_t
 #include <vector>	// vector<>
 
 class hashl_index {
     public:	// type declarations
 	typedef unsigned long data_offset_type;
 	typedef uint64_t base_type;
-	typedef std::vector<base_type> vector_key_type;
 	typedef hashl_key_type<hashl_index> key_type;
+	typedef typename std::vector<base_type>::size_type size_type;
 
 	class const_iterator {
 	    private:
 		const hashl_index &list;
-		size_t offset_;
+		size_type offset_;
 	    public:
-		explicit const_iterator(const hashl_index &a, const size_t i) : list(a) {
+		explicit const_iterator(const hashl_index &a, const size_type i) : list(a) {
 			offset_ = i < list.size() ? i : list.size();
 		}
 		const_iterator(const const_iterator &a) : list(a.list), offset_(a.offset_) { }
 		~const_iterator() { }
-		const size_t &offset() const {
+		const size_type &offset() const {
 			return offset_;
 		}
 		void key(key_type &key) const {
@@ -61,11 +59,11 @@ class hashl_index {
 	};
 
     protected:
-	//std::vector<data_offset_type> key_list;
+	std::vector<data_offset_type> key_list;
 	std::vector<base_type> data;
 	std::vector<char> metadata;
-	size_t bit_width;
-	size_t word_width;
+	size_type bit_width;
+	size_type word_width;
 	int fd;
     protected:
 	std::string boilerplate() const;
@@ -73,16 +71,16 @@ class hashl_index {
 	// can only be initialized from an uncompressed file
 	explicit hashl_index(int);
 	~hashl_index() { }
-	size_t size() const {
+	size_type size() const {
 		return key_list.size();
 	}
 	bool empty() const {
 		return key_list.empty();
 	}
-	size_t bits() const {
+	size_type bits() const {
 		return bit_width;
 	}
-	size_t words() const {
+	size_type words() const {
 		return word_width;
 	}
 	const_iterator cbegin() const {
@@ -102,6 +100,7 @@ class hashl_index {
 	// start and length are in bits, not basepairs
 	void get_sequence(data_offset_type start, data_offset_type length, std::string &) const;
 	void print() const;
+	static save(const std::vector<data_offset_type> &key_list_in, const std:vector<base_type> &data_in, const std::vector<char> &metadata_in, const size_type bit_width_in, const size_type word_width_in, const int fd_in);
 };
 
 #endif // !_HASHL_INDEX_H

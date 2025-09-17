@@ -528,5 +528,6 @@ void hashl::save_index(const int fd) {
 	key_list.resize(used_elements);
 	// sort key_list by *kmer* (not kmer position ;)
 	std::sort(key_list.begin(), key_list.end(), [this](const hash_offset_type __a, const hash_offset_type __b) {return this->compare_kmers(__a, __b);});
-	// XXX write stuff out!
+	// save everything to an index
+	hashl_index::save(key_list, data, metadata, bith_width, word_width, fd);
 }
