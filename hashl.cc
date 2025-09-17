@@ -407,42 +407,8 @@ void hashl::filtering_finish(const hashl::small_value_type min, const hashl::sma
 	}
 }
 
-void hashl::save_index(const int fd) {
-	// invalidate keys for any invalid_values
-	for (hash_offset_type i(0); i < modulus; ++i) {
-		if (value_list[i] == invalid_value) {
-			key_list[i] = invalid_key;
-			--used_elements;
-		}
-	}
-	// we no longer need the values, so free memory
-	value_list = std::vector<small_value_type>();
-	// shift valid key_list entries to bottom of array
-	// TODO: would this be faster if we made it part of the sort?
-	if (used_elements < modulus) {
-		auto a = key_list.begin();
-		auto end_a = a + used_elements;
-		for (; *a != invalid_key; ++a) { }
-		for (auto b = end_a; a != end_a; ++b) {
-			for (; *b == invalid_key; ++b) { }
-			std::swap(*a, *b);
-			for (++a; *a != invalid_value; ++a) { }
-		}
-	}
-	// remove invalid entries
-	key_list.resize(used_elements);
-#if 0
-	// XXX - sort key_list by *kmer* (not kmer position ;)
-	class key_list_comp {
-		bool operator(hashl &c)(const base_type &a, const base_type &b) const {
-		}
-	};
-	std::sort(key_list.begin(), key_list.end(), key_list_comp(*this));
-#endif
-}
-
 // this is a little tricky, as the offsets generally don't line up with the data storage
-// (c.f., hashl_key_type::equal())
+// (c.f., hashl_key_type::equal(), except in that case the internal k vector does align)
 
 bool hashl::compare_kmers(const hash_offset_type &a, const hash_offset_type &b) const {
 	const size_type a_i = a / (sizeof(base_type) * 8);
@@ -532,4 +498,35 @@ bool hashl::compare_kmers(const hash_offset_type &a, const hash_offset_type &b) 
 		mask = static_cast<base_type>(-1) << (sizeof(base_type) * 8 - trailing_bit);
 		return ((data[a_i + words - 1] << shift_left) | (data[a_i + words] >> shift_right)) < data[b_i + words];
 	}
+}
+
+void hashl::save_index(const int fd) {
+	// invalidate keys for any invalid_values
+	for (hash_offset_type i(0); i < modulus; ++i) {
+		if (value_list[i] == invalid_value) {
+			key_list[i] = invalid_key;
+			--used_elements;
+		}
+	}
+	// we no longer need the values, so free memory
+	value_list = std::vector<small_value_type>();
+	// shift valid key_list entries to bottom of array
+	auto a = key_list.begin();
+	auto end_a = a + used_elements;
+	for (; *a != invalid_key; ++a) { }
+	auto b = end_a;
+	for (; *b == invalid_key; ++b) { }
+	// have to swap first pair to ensure *end_a == invalid_key
+	std::swap(*a, *b);
+	for (++a; *a != invalid_key; ++a) { }
+	for (++b; a != end_a; ++b) {
+		for (; *b == invalid_key; ++b) { }
+		*a = *b;
+		for (++a; *a != invalid_key; ++a) { }
+	}
+	// remove invalid entries
+	key_list.resize(used_elements);
+	// sort key_list by *kmer* (not kmer position ;)
+	std::sort(key_list.begin(), key_list.end(), [this](const hash_offset_type __a, const hash_offset_type __b) {return this->compare_kmers(__a, __b);});
+	// XXX write stuff out!
 }
