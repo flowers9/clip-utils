@@ -100,7 +100,7 @@ class hashl_index {
 	// start and length are in bits, not basepairs
 	void get_sequence(data_offset_type start, data_offset_type length, std::string &) const;
 	void print() const;
-	static void save(const std::vector<data_offset_type> &key_list_in, const std::vector<base_type> &data_in, const std::vector<char> &metadata_in, const size_type bit_width_in, const size_type word_width_in, const int fd_in);
+	static void save(const std::vector<data_offset_type> &key_list_in, const std::vector<base_type> &data_in, const std::vector<char> &metadata_in, size_type bit_width_in, size_type word_width_in, int fd_in);
 };
 
 #endif // !_HASHL_INDEX_H
