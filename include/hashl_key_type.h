@@ -55,8 +55,7 @@ class hashl_key_type {
 	const size_type bit_shift;	// precalc for push_front
 	const base_type high_mask;	// precalc for push_back
     public:
-	// XXX - does high_mask have a problem when __a.bits() is a multiple of sizeof(base_type) * 8?
-	explicit hashl_key_type(const T &__a) : k(__a.words(), 0), bit_shift((__a.bits() - 2) % (sizeof(base_type) * 8)), high_mask(static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - __a.bits() % (sizeof(base_type) * 8))) { }
+	explicit hashl_key_type(const T &__a) : k(__a.words(), 0), bit_shift((__a.bits() - 2) % (sizeof(base_type) * 8)), high_mask(static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - __a.bits() % (sizeof(base_type) * 8)) % (sizeof(base_type) * 8)) { }
 	~hashl_key_type() { }
 	bool operator<(const hashl_key_type &__a) const {
 		for (size_type __i(0); __i != k.size(); ++__i) {

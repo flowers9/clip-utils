@@ -90,7 +90,7 @@ class hashl {
 		const_iterator(const const_iterator &a) : list(a.list), offset_(a.offset_) { }
 		~const_iterator() { }
 		// value()/key() undefined if called when pointing to end()
-		const value_type &operator*() const {
+		const small_value_type &operator*() const {
 			return list.value_list[offset_];
 		}
 		const hash_offset_type &offset() const {

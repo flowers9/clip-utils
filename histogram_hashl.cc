@@ -92,10 +92,10 @@ static void print_mer_frequency(std::ostream &fp_out, const hashl &mer_list) {
 	for (; a != end_a; ++a) {
 		if (*a >= opt_frequency_cutoff) {
 			a.key(key);
-			fp_out << convert_key(key) << ' ' << *a << "\n";
+			fp_out << convert_key(key) << ' ' << static_cast<unsigned int>(*a) << "\n";
 			reverse_key(key, comp_key);
 			if (key != comp_key) {
-				fp_out << convert_key(comp_key) << ' ' << *a << "\n";
+				fp_out << convert_key(comp_key) << ' ' << static_cast<unsigned int>(*a) << "\n";
 			}
 		}
 	}
@@ -145,7 +145,7 @@ static void print_mer_histogram(std::ostream &fp_out, const hashl &mer_list) {
 	}
 	c = counts.begin();
 	if (c != end_c && c->first == 1) {
-		fp_out <<  c->first << ' ' << c->second << "\n";
+		fp_out <<  static_cast<unsigned int>(c->first) << ' ' << c->second << "\n";
 		++c;
 	}
 	double i(0);
@@ -153,9 +153,9 @@ static void print_mer_histogram(std::ostream &fp_out, const hashl &mer_list) {
 		const double x(100 * static_cast<double>(c->first) * static_cast<double>(c->second));
 		i += x;
 		if (opt_print_gc) {
-			fp_out << c->first << ' ' << c->second << ' ' << x / total << ' ' << i / total << ' ' << 100 * static_cast<double>(gc_counts[c->first]) / static_cast<double>(c->second) / static_cast<double>(opt_mer_length) << "\n";
+			fp_out << static_cast<unsigned int>(c->first) << ' ' << c->second << ' ' << x / total << ' ' << i / total << ' ' << 100 * static_cast<double>(gc_counts[c->first]) / static_cast<double>(c->second) / static_cast<double>(opt_mer_length) << "\n";
 		} else {
-			fp_out << c->first << ' ' << c->second << ' ' << x / total << ' ' << i / total << "\n";
+			fp_out << static_cast<unsigned int>(c->first) << ' ' << c->second << ' ' << x / total << ' ' << i / total << "\n";
 		}
 	}
 }
