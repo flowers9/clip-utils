@@ -89,8 +89,8 @@ class hashl_index {
 	const_iterator cend() const {
 		return const_iterator(*this, key_list.size());
 	}
-	const_iterator find(const key_type &key) const;
-	const_iterator find(const key_type &key, const key_type &comp_key) const;
+	bool exists(const key_type &key) const;
+	bool exists(const key_type &key, const key_type &comp_key) const;
 	const std::vector<char> &get_metadata() const {
 		return metadata;
 	}

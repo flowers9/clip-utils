@@ -1,5 +1,14 @@
 #include "hashl_index.h"
+#include "itoa.h"	// itoa()
+#include "local_endian.h"	// big_endian
+#include "open_compressed.h"	// pfread()
+#include "write_fork.h"	// pfwrite()
+#include <iomanip>	// setw()
+#include <iostream>	// cerr, cout
+#include <stdlib.h>	// exit()
+#include <string.h>	// memcmp()
 #include <string>	// string
+#include <vector>	// vector<>
 
 // description beginning of saved file
 
@@ -20,7 +29,7 @@ hashl::hashl(const int fd) {
 	char t[s.size()];
 	pfread(fd, t, s.size());
 	if (memcmp(t, s.c_str(), s.size()) != 0) {
-		std::cerr << "Error: could not read hash from file: header mismatch\n";
+		std::cerr << "Error: could not read index from file: header mismatch\n";
 		exit(1);
 	}
 	pfread(fd, &bit_width, sizeof(bit_width));
@@ -40,10 +49,15 @@ hashl::hashl(const int fd) {
 	pfread(fd, &key_list[0], sizeof(data_offset_type) * key_list_size);
 }
 
-const_iterator hashl_index::find(const key_type &key) const {
+// XXX
+bool hashl_index::exists(const key_type &key, const key_type &comp_key) const {
+	return std::binary_search(key_list.begin(), key_list.end(), [this](const data_offset_type __i, const data_offset_type __j){return key.equal(this->data, this->key_list[__i] || comp_key.equal(this->data, this->key_list[__i])});
 }
 
-const_iterator hashl_index::find(const key_type &key, const key_type &comp_key) const {
+bool hashl_index::exists(const key_type &key) const {
+	key_type comp_key(*this);
+	comp_key.make_complement(key);
+	return exists(key, comp_key);
 }
 
 void hashl_index::get_sequence(const data_offset_type start, const data_offset_type length, std::string &) const {

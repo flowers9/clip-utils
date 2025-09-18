@@ -217,9 +217,6 @@ class hashl {
 	void filtering_finish(small_value_type min, small_value_type max);
 	// this destroys the hash, as it involves sorting key_list in place
 	void save_index(int);
-    private:
-	// return if kmer(a) < kmer(b)
-	bool compare_kmers(const data_offset_type &a, const data_offset_type &b) const;
 };
 
 #endif // !_HASHL_H
