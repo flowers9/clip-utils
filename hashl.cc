@@ -437,5 +437,5 @@ void hashl::save_index(const int fd) {
 	// sort key_list by *kmer* (not kmer position ;)
 	std::sort(key_list.begin(), key_list.end(), [this](const hash_offset_type __a, const hash_offset_type __b) {return hashl_less<hashl>()(*this, __a, __b);});
 	// save everything to an index
-	hashl_index::save(key_list, data, metadata, bit_width, word_width, fd);
+	hashl_index::save(key_list, data, metadata, bit_width, fd);
 }

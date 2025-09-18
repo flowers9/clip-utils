@@ -25,6 +25,7 @@ static int opt_reference_max_kmer_frequency;
 static int opt_reference_min_kmer_frequency;
 static size_t opt_nmers;
 static std::string opt_hash_save;
+static std::string opt_index_save;
 static std::string opt_purged_hash_save;
 static std::string opt_results_save;
 static std::vector<std::string> opt_reference_list;
@@ -63,10 +64,11 @@ static void print_usage() {
 		"    -H    print histogram of combined reference\n"
 		"    -f ## fastq min kmer frequency\n"
 		"    -F ## fastq max kmer frequency\n"
+		"    -i ## save an index to reference kmers found in target hashes\n"
 		"    -m ## reference min kmer frequency\n"
 		"    -M ## reference max kmer frequency [1]\n"
 		"    -o ## save results to a hash dump for later processing\n"
-		"    -p ## save hash, but purge invalid values before saving\n"
+		"    -p ## save combined hash, but purge invalid values before saving\n"
 		"    -r ## add reference file (may be specified multiple times)\n"
 		"    -s ## save resulting combined reference hash\n"
 		"    -S ## load histogram memory dump from given file\n"
@@ -89,7 +91,7 @@ static void get_opts(const int argc, char * const * const argv) {
 	opt_reference_max_kmer_frequency = 1;
 	opt_reference_min_kmer_frequency = 0;
 	int c;
-	while ((c = getopt(argc, argv, "hHf:F:m:M:o:p:r:s:S:u:Vz:")) != EOF) {
+	while ((c = getopt(argc, argv, "hHf:F:i:m:M:o:p:r:s:S:u:Vz:")) != EOF) {
 		switch (c) {
 		    case 'h':
 			print_usage();
@@ -102,6 +104,9 @@ static void get_opts(const int argc, char * const * const argv) {
 			break;
 		    case 'F':
 			std::istringstream(optarg) >> opt_fastq_max_kmer_frequency;
+			break;
+		    case 'i':
+			opt_index_save = optarg;
 			break;
 		    case 'm':
 			std::istringstream(optarg) >> opt_reference_min_kmer_frequency;
@@ -174,6 +179,18 @@ static void save_hash(const hashl &mer_list, const std::string &filename) {
 		exit(1);
 	}
 	mer_list.save(fd);
+	close_fork(fd);
+}
+
+static void save_index(hashl &mer_list, const std::string &filename) {
+	// index file is never compressed, so don't even check the suffix
+	const int fd(write_fork(std::list<std::string>(), filename));
+	if (fd == -1) {
+		std::cerr << "Error: could not save index " << filename << '\n';
+		exit(1);
+	}
+	// note: this trashes mer_list
+	mer_list.save_index(fd);
 	close_fork(fd);
 }
 
@@ -262,7 +279,13 @@ static void cross_ref_save(const hashl &reference_kmers, hashl &fastq_kmers) {
 			}
 		}
 	}
-	save_hash(fastq_kmers, opt_results_save);
+	fastq_kmers.purge_invalid_values();
+	if (!opt_results_save.empty()) {
+		save_hash(fastq_kmers, opt_results_save);
+	}
+	if (!opt_index_save.empty()) {
+		save_index(fastq_kmers, opt_index_save);
+	}
 }
 
 void save_purged_hash(hashl &reference_kmers) {
@@ -298,7 +321,7 @@ int main(const int argc, char * const * const argv) {
 		} else if (static_cast<unsigned int>(opt_max_kmer_sharing) > opt_reference_list.size()) {
 			opt_max_kmer_sharing = opt_reference_list.size();
 		}
-		if (reference_kmers.size() * 2 > reference_kmers.capacity() || !opt_hash_save.empty()) {
+		if (2 * reference_kmers.size() > reference_kmers.capacity() || !opt_hash_save.empty()) {
 			// reduce load to 50% load to optimize speed of lookups
 			// or increase to 50% to reduce size of save file
 			std::cerr << "setting hash to 50% load\n";
@@ -328,10 +351,10 @@ int main(const int argc, char * const * const argv) {
 		return 1;
 	}
 	std::cerr << "processing kmers\n";
-	if (opt_results_save.empty()) {
-		cross_ref_stdout(reference_kmers, fastq_kmers);
-	} else {
+	if (!opt_results_save.empty() || !opt_index_save.empty()) {
 		cross_ref_save(reference_kmers, fastq_kmers);
+	} else {
+		cross_ref_stdout(reference_kmers, fastq_kmers);
 	}
 	return 0;
 }

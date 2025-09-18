@@ -118,7 +118,7 @@ bin/dot_hash: obj/dot_hash.o obj/open_compressed.o obj/hash.o obj/next_prime.o o
 bin/dot_hashn: obj/dot_hashn.o obj/open_compressed.o obj/hashn.o obj/next_prime.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-bin/screen_kmers_by_ref: obj/screen_kmers_by_ref.o obj/open_compressed.o obj/hashl.o obj/hashl_metadata.o obj/next_prime.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o
+bin/screen_kmers_by_ref: obj/screen_kmers_by_ref.o obj/open_compressed.o obj/hashl.o obj/hashl_index.o obj/hashl_metadata.o obj/next_prime.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 bin/screen_kmers_by_lib: obj/screen_kmers_by_lib.o obj/open_compressed.o obj/hashl.o obj/hashl_metadata.o obj/next_prime.o obj/write_fork.o obj/breakup_line.o obj/strtostr.o obj/time_used.o

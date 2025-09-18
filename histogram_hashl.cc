@@ -483,7 +483,7 @@ static void count_nmers_window(hashl &mer_list, const std::vector<size_t> &read_
 		// run over all nmers, one basepair at a time
 		for (; i < read_end; ++i) {
 			x_window.increment_keys();
-			const auto b = window_mers.find(x.key < x.comp_key ? x.key.value() : x.comp_key.value());
+			const auto b = window_mers.find(x_window.key < x_window.comp_key ? x_window.key.value() : x_window.comp_key.value());
 			if (b != window_mers.end()) {
 				if (b->second > max_repeats) {
 					if (!mer_list.insert_invalid(x_window.key, x_window.comp_key, 2 * (i - window_size + 1 - opt_mer_length))) {
@@ -510,16 +510,16 @@ static void count_nmers_window(hashl &mer_list, const std::vector<size_t> &read_
 		// now drain window_keys
 		for (; i < read_end; ++i) {
 			x_window.increment_keys();
-			const auto b = window_mers.find(x.key < x.comp_key ? x.key.value() : x.comp_key.value());
+			const auto b = window_mers.find(x_window.key < x_window.comp_key ? x_window.key.value() : x_window.comp_key.value());
 			if (b != window_mers.end()) {
 				if (b->second > max_repeats) {
-					if (!mer_list.insert_invalid(x_window.key, x_window.comp_key, 2 * (i - window_size + 1 - opt_mer_length))) {
+					if (!mer_list.insert_invalid(x_window.key, x_window.comp_key, 2 * (i + 1 - opt_mer_length))) {
 						std::cerr << "Error: ran out of space in hash\n";
 						exit(1);
 					}
 				} else {
 					// insert with bit offset to start of nmer
-					if (!mer_list.insert_unique(x_window.key, x_window.comp_key, 2 * (i - window_size + 1 - opt_mer_length))) {
+					if (!mer_list.insert_unique(x_window.key, x_window.comp_key, 2 * (i + 1 - opt_mer_length))) {
 						std::cerr << "Error: ran out of space in hash\n";
 						exit(1);
 					}

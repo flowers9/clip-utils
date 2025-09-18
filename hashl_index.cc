@@ -12,7 +12,7 @@
 
 // description beginning of saved file
 
-std::string hashl_index::boilerplate() const {
+std::string hashl_index::boilerplate() {
 	std::string s("hashl_index\n");
 	s += itoa(sizeof(base_type));
 	s += " bytes\n";
@@ -24,7 +24,7 @@ std::string hashl_index::boilerplate() const {
 	return s;
 }
 
-hashl::hashl(const int fd) {
+hashl_index::hashl_index(const int fd) {
 	const std::string s(boilerplate());
 	char t[s.size()];
 	pfread(fd, t, s.size());
@@ -50,9 +50,11 @@ hashl::hashl(const int fd) {
 }
 
 // checks for the existence of key or its reverse complement
-// (while hashl only stores key values of key < comp_key, our vector
-// can only record the values that actually show up in the sequence,
-// whichever one it is)
+// (while hashl only stores hashes for key values of key < comp_key,
+// our vector can only record the values that actually show up in the
+// sequence, whichever one it is)
+
+// note: might be faster with a tri-value comparison (-1, 0, 1)?
 
 bool hashl_index::exists(const key_type &key) const {
 	// do a binary search, comparing key to kmers at data offsets given by array values
@@ -74,7 +76,7 @@ bool hashl_index::exists(const key_type &key) const {
 	return comp_key.equal_to(data, i);
 }
 
-void hashl_index::get_sequence(const data_offset_type start, const data_offset_type length, std::string &) const {
+void hashl_index::get_sequence(const data_offset_type start, const data_offset_type length, std::string &seq) const {
 	const char values[4] = { 'A', 'C', 'G', 'T' };
 	seq.clear();
 	size_t word_offset(start / (sizeof(base_type) * 8));
@@ -102,23 +104,21 @@ void hashl_index::print() const {
 	std::string s;
 	key_type k(*this);
 	for (size_type i(0); i < key_list.size(); ++i) {
-		if (key_list[i] != invalid_key) {
-			k.copy_in(data, key_list[i]);
-			k.convert_to_string(s);
-			std::cout << std::setw(max_offset_width) << i << ' ' << std::setw(max_key_width) << key_list[i] << ' ' << s << "\n";
-		}
+		k.copy_in(data, key_list[i]);
+		k.convert_to_string(s);
+		std::cout << std::setw(max_offset_width) << i << ' ' << std::setw(max_key_width) << key_list[i] << ' ' << s << "\n";
 	}
 }
 
-static void hashl_index::save(const std::vector<data_offset_type> &key_list_in, const std::vector<base_type> &data_in, const std::vector<char> &metadata_in, const size_type bit_width_in, const size_type word_width_in, const int fd_in) {
+void hashl_index::save(const std::vector<data_offset_type> &key_list_in, const std::vector<base_type> &data_in, const std::vector<char> &metadata_in, const size_type bit_width_in, const int fd) {
 	const std::string s(boilerplate());
 	pfwrite(fd, s.c_str(), s.size());
-	pfwrite(fd, &bit_width, sizeof(bit_width));
+	pfwrite(fd, &bit_width_in, sizeof(bit_width_in));
 	size_type tmp;
-	pfwrite(fd, &(tmp = metadata.size()), sizeof(tmp));
-	pfwrite(fd, &metadata[0], metadata.size());
-	pfwrite(fd, &(tmp = data.size()), sizeof(tmp));
-	pfwrite(fd, &data[0], sizeof(base_type) * data.size());
-	pfwrite(fd, &(tmp = key_list.size()), sizeof(tmp));
-	pfwrite(fd, &key_list[0], sizeof(data_offset_type) * key_list.size());
+	pfwrite(fd, &(tmp = metadata_in.size()), sizeof(tmp));
+	pfwrite(fd, &metadata_in[0], metadata_in.size());
+	pfwrite(fd, &(tmp = data_in.size()), sizeof(tmp));
+	pfwrite(fd, &data_in[0], sizeof(base_type) * data_in.size());
+	pfwrite(fd, &(tmp = key_list_in.size()), sizeof(tmp));
+	pfwrite(fd, &key_list_in[0], sizeof(data_offset_type) * key_list_in.size());
 }
