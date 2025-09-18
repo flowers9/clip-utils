@@ -189,7 +189,7 @@ static void save_index(hashl &mer_list, const std::string &filename) {
 		std::cerr << "Error: could not save index " << filename << '\n';
 		exit(1);
 	}
-	// note: this trashes mer_list
+	// note: trashes mer_list
 	mer_list.save_index(fd);
 	close_fork(fd);
 }
@@ -216,11 +216,10 @@ static void print_mer_histogram(const hashl &mer_list) {
 }
 
 static bool load_and_combine_hashes(hashl &kmer_hash, const std::vector<std::string> &files, const int min_cutoff, const int max_cutoff, const size_t starting_hash_size = 0) {
-	std::cerr << time(0) << '\n';
 	hashl tmp_hash;			// declare outside loop so memory can get reused
 	// load in reference saved hashes
 	for (const auto &file : files) {
-		std::cerr << "reading " << file << '\n';
+		std::cerr << time(0) << ": reading " << file << '\n';
 		const int fd(open_compressed(file));
 		if (fd == -1) {
 			std::cerr << "Error: could not read saved hash: " << file << '\n';
@@ -284,6 +283,7 @@ static void cross_ref_save(const hashl &reference_kmers, hashl &fastq_kmers) {
 		save_hash(fastq_kmers, opt_results_save);
 	}
 	if (!opt_index_save.empty()) {
+		// trashes fastq_kmers
 		save_index(fastq_kmers, opt_index_save);
 	}
 }
@@ -324,7 +324,7 @@ int main(const int argc, char * const * const argv) {
 		if (2 * reference_kmers.size() > reference_kmers.capacity() || !opt_hash_save.empty()) {
 			// reduce load to 50% load to optimize speed of lookups
 			// or increase to 50% to reduce size of save file
-			std::cerr << "setting hash to 50% load\n";
+			std::cerr << time(0) << ": setting hash to 50% load\n";
 			reference_kmers.resize(2 * reference_kmers.size());
 			std::cerr << time(0) << ": size " << reference_kmers.size() << ' ' << double(100) * reference_kmers.size() / reference_kmers.capacity() << "% " << reference_kmers.capacity() << '\n';
 		}
@@ -350,7 +350,7 @@ int main(const int argc, char * const * const argv) {
 	if (!load_and_combine_hashes(fastq_kmers, target_hashes, opt_fastq_min_kmer_frequency, opt_fastq_max_kmer_frequency)) {
 		return 1;
 	}
-	std::cerr << "processing kmers\n";
+	std::cerr << time(0) << ": processing kmers\n";
 	if (!opt_results_save.empty() || !opt_index_save.empty()) {
 		cross_ref_save(reference_kmers, fastq_kmers);
 	} else {
