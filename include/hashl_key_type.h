@@ -131,7 +131,7 @@ class hashl_key_type {
 	}
 
 	// same as copy_in(), but with breakpoints and not saving the generated key
-	bool equal(const std::vector<base_type> &data, const data_offset_type offset) const {
+	bool equal_to(const std::vector<base_type> &data, const data_offset_type offset) const {
 		const size_type i = offset / (sizeof(base_type) * 8);
 		const base_type starting_bit = sizeof(base_type) * 8 - offset % (sizeof(base_type) * 8);
 		const base_type high_offset = bit_shift + 2;
@@ -168,6 +168,46 @@ class hashl_key_type {
 			}
 		}
 		return 1;
+	}
+
+	// return if key < kmer at offset (mostly duplicates equal())
+	bool less_than(const std::vector<base_type> &data, const data_offset_type offset) const {
+		const size_type i = offset / (sizeof(base_type) * 8);
+		const base_type starting_bit = sizeof(base_type) * 8 - offset % (sizeof(base_type) * 8);
+		const base_type high_offset = bit_shift + 2;
+		if (starting_bit == high_offset) {
+			if (k[0] != (data[i] & high_mask)) {
+				return k[0] < (data[i] & high_mask);
+			}
+			for (size_type j(1); j < k.size(); ++j) {
+				if (k[j] != data[i + j]) {
+					return k[j] < data[i + j];
+				}
+			}
+		} else if (starting_bit < high_offset) {
+			const unsigned int shift_left = high_offset - starting_bit;
+			const unsigned int shift_right = sizeof(base_type) * 8 - shift_left;
+			if (k[0] != (((data[i] << shift_left) | (data[i + 1] >> shift_right)) & high_mask)) {
+				return k[0] < (((data[i] << shift_left) | (data[i + 1] >> shift_right)) & high_mask);
+			}
+			for (size_type j(1); j < k.size(); ++j) {
+				if (k[j] != ((data[i + j] << shift_left) | (data[i + j + 1] >> shift_right))) {
+					return k[j] < ((data[i + j] << shift_left) | (data[i + j + 1] >> shift_right));
+				}
+			}
+		} else {
+			const unsigned int shift_right = starting_bit - high_offset;
+			const unsigned int shift_left = sizeof(base_type) * 8 - shift_right;
+			if (k[0] != ((data[i] >> shift_right) & high_mask)) {
+				return k[0] < ((data[i] >> shift_right) & high_mask);
+			}
+			for (size_type j(1); j < k.size(); ++j) {
+				if (k[j] != ((data[i + j - 1] << shift_left) | (data[i + j] >> shift_right))) {
+					return k[j] < ((data[i + j - 1] << shift_left) | (data[i + j] >> shift_right));
+				}
+			}
+		}
+		return 0;
 	}
 };
 

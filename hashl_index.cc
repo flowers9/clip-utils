@@ -49,15 +49,29 @@ hashl::hashl(const int fd) {
 	pfread(fd, &key_list[0], sizeof(data_offset_type) * key_list_size);
 }
 
-// XXX
-bool hashl_index::exists(const key_type &key, const key_type &comp_key) const {
-	return std::binary_search(key_list.begin(), key_list.end(), [this](const data_offset_type __i, const data_offset_type __j){return key.equal(this->data, this->key_list[__i] || comp_key.equal(this->data, this->key_list[__i])});
-}
+// checks for the existence of key or its reverse complement
+// (while hashl only stores key values of key < comp_key, our vector
+// can only record the values that actually show up in the sequence,
+// whichever one it is)
 
 bool hashl_index::exists(const key_type &key) const {
+	// do a binary search, comparing key to kmers at data offsets given by array values
+	size_type i = 0, j = key_list.size();
+	while (i + 1 < j) {
+		const size_type m = (i + j) / 2;
+		(key.less_than(data, m) ? j : i) = m;
+	}
+	if (key.equal_to(data, i)) {
+		return 1;
+	}
+	// and now check the reverse complement
 	key_type comp_key(*this);
 	comp_key.make_complement(key);
-	return exists(key, comp_key);
+	for (i = 0, j = key_list.size(); i + 1 < j;) {
+		const size_type m = (i + j) / 2;
+		(comp_key.less_than(data, m) ? j : i) = m;
+	}
+	return comp_key.equal_to(data, i);
 }
 
 void hashl_index::get_sequence(const data_offset_type start, const data_offset_type length, std::string &) const {

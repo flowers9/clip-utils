@@ -90,7 +90,6 @@ class hashl_index {
 		return const_iterator(*this, key_list.size());
 	}
 	bool exists(const key_type &key) const;
-	bool exists(const key_type &key, const key_type &comp_key) const;
 	const std::vector<char> &get_metadata() const {
 		return metadata;
 	}

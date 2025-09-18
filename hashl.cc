@@ -88,7 +88,7 @@ hashl::hash_offset_type hashl::insert_offset(const key_type &key, const key_type
 	hash_offset_type i(key_hash % modulus);
 	if (key_list[i] == invalid_key) {		// insert
 		return insert_key(i, offset);
-	} else if (key.equal(data, key_list[i]) || comp_key.equal(data, key_list[i])) {
+	} else if (key.equal_to(data, key_list[i]) || comp_key.equal_to(data, key_list[i])) {
 		return i;				// already present
 	}
 	const hash_offset_type j(collision_modulus - key_hash % collision_modulus);
@@ -96,7 +96,7 @@ hashl::hash_offset_type hashl::insert_offset(const key_type &key, const key_type
 		i = (i + j) % modulus;
 		if (key_list[i] == invalid_key) {
 			return insert_key(i, offset);
-		} else if (key.equal(data, key_list[i]) || comp_key.equal(data, key_list[i])) {
+		} else if (key.equal_to(data, key_list[i]) || comp_key.equal_to(data, key_list[i])) {
 			return i;
 		}
 	}
@@ -109,7 +109,7 @@ hashl::hash_offset_type hashl::find_offset(const key_type &key, const key_type &
 	hash_offset_type i(key_hash % modulus);
 	if (key_list[i] == invalid_key) {
 		return modulus;
-	} else if (key.equal(data, key_list[i]) || comp_key.equal(data, key_list[i])) {
+	} else if (key.equal_to(data, key_list[i]) || comp_key.equal_to(data, key_list[i])) {
 		return i;
 	}
 	const hash_offset_type j(collision_modulus - key_hash % collision_modulus);
@@ -117,7 +117,7 @@ hashl::hash_offset_type hashl::find_offset(const key_type &key, const key_type &
 		i = (i + j) % modulus;
 		if (key_list[i] == invalid_key) {
 			return modulus;
-		} else if (key.equal(data, key_list[i]) || comp_key.equal(data, key_list[i])) {
+		} else if (key.equal_to(data, key_list[i]) || comp_key.equal_to(data, key_list[i])) {
 			return i;
 		}
 	}
