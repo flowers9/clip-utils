@@ -65,14 +65,14 @@ void hashl::init_from_file(const int fd) {
 	key_list.assign(modulus, invalid_key);
 	for (hash_offset_type i(0); i < modulus; ++i) {
 		if (value_list[i]) {
-			pfread(fd, &key_list[i], sizeof(data_offset_type));
+			pfread(fd, &key_list[i], sizeof(size_type));
 		}
 	}
 }
 
 // insert a key at a particular location
 
-hashl::hash_offset_type hashl::insert_key(const hash_offset_type i, const data_offset_type offset) {
+hashl::hash_offset_type hashl::insert_key(const hash_offset_type i, const size_type offset) {
 	if (++used_elements == modulus) {	// hash table is full
 		return used_elements--;		// (always leave one empty value to mark end)
 	}
@@ -83,7 +83,7 @@ hashl::hash_offset_type hashl::insert_key(const hash_offset_type i, const data_o
 
 // find a key, or insert it if it doesn't exist; return modulus if hash is full
 
-hashl::hash_offset_type hashl::insert_offset(const key_type &key, const key_type &comp_key, const data_offset_type offset) {
+hashl::hash_offset_type hashl::insert_offset(const key_type &key, const key_type &comp_key, const size_type offset) {
 	const base_type key_hash(key < comp_key ? key.hash() : comp_key.hash());
 	hash_offset_type i(key_hash % modulus);
 	if (key_list[i] == invalid_key) {		// insert
@@ -141,7 +141,7 @@ void hashl::increment(const key_type &key, const key_type &comp_key) {
 	}
 }
 
-bool hashl::increment(const key_type &key, const key_type &comp_key, const data_offset_type offset) {
+bool hashl::increment(const key_type &key, const key_type &comp_key, const size_type offset) {
 	const hash_offset_type i(insert_offset(key, comp_key, offset));
 	if (i == modulus) {	// insert failed
 		return 0;
@@ -153,7 +153,7 @@ bool hashl::increment(const key_type &key, const key_type &comp_key, const data_
 }
 
 // insert key, but if it already exists, mark it as invalid
-bool hashl::insert_unique(const key_type &key, const key_type &comp_key, const data_offset_type offset) {
+bool hashl::insert_unique(const key_type &key, const key_type &comp_key, const size_type offset) {
 	const hash_offset_type i(insert_offset(key, comp_key, offset));
 	if (i == modulus) {	// insert failed
 		return 0;
@@ -166,7 +166,7 @@ bool hashl::insert_unique(const key_type &key, const key_type &comp_key, const d
 	return 1;
 }
 
-bool hashl::insert_invalid(const key_type &key, const key_type &comp_key, const data_offset_type offset) {
+bool hashl::insert_invalid(const key_type &key, const key_type &comp_key, const size_type offset) {
 	const hash_offset_type i(insert_offset(key, comp_key, offset));
 	if (i == modulus) {	// insert failed
 		return 0;
@@ -184,7 +184,7 @@ hashl::small_value_type hashl::value(const key_type &key) const {
 
 // same as above, but also return the data offset
 
-std::pair<hashl::data_offset_type, hashl::small_value_type> hashl::entry(const key_type &key) const {
+std::pair<hashl::size_type, hashl::small_value_type> hashl::entry(const key_type &key) const {
 	const hash_offset_type i(find_offset(key));
 	if (i < modulus) {
 		return std::make_pair(key_list[i], value_list[i]);
@@ -208,7 +208,7 @@ void hashl::save(const int fd) const {
 	pfwrite(fd, &value_list[0], sizeof(small_value_type) * modulus);
 	for (hash_offset_type i(0); i < modulus; ++i) {
 		if (key_list[i] != invalid_key) {
-			pfwrite(fd, &key_list[i], sizeof(data_offset_type));
+			pfwrite(fd, &key_list[i], sizeof(size_type));
 		}
 	}
 }
@@ -229,7 +229,7 @@ void hashl::resize(hash_offset_type size_asked) {
 	// since modulus is prime, any value will do - I made it prime for fun
 	collision_modulus = next_prime(size_asked / 2);
 	// initialize keys and values (and save old ones)
-	std::vector<data_offset_type> old_key_list(modulus, invalid_key);
+	std::vector<size_type> old_key_list(modulus, invalid_key);
 	key_list.swap(old_key_list);
 	std::vector<small_value_type> old_value_list(modulus, 0);
 	value_list.swap(old_value_list);
@@ -356,12 +356,12 @@ void hashl::print(void) const {
 	}
 }
 
-void hashl::get_sequence(const data_offset_type start, const data_offset_type length, std::string &seq) const {
+void hashl::get_sequence(const size_type start, const size_type length, std::string &seq) const {
 	const char values[4] = { 'A', 'C', 'G', 'T' };
 	seq.clear();
 	size_type word_offset(start / (sizeof(base_type) * 8));
 	size_type bit_offset(sizeof(base_type) * 8 - start % (sizeof(base_type) * 8));
-	for (data_offset_type i(0); i < length; i += 2) {
+	for (size_type i(0); i < length; i += 2) {
 		if (bit_offset) {
 			bit_offset -= 2;
 		} else {

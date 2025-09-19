@@ -56,17 +56,17 @@ static void get_opts(const int argc, char * const * const argv) {
 
 struct hit_info {
 	uint64_t end;			// the map key is the start position
-	hashl::data_offset_type offset;	// to pull out sequence later
+	hashl::size_type offset;	// to pull out sequence later
 };
 
 // add range, either as itself or extending an existing one
 // (possibly merging two)
 
-static void add_range(const std::map<hashl::data_offset_type, hashl_metadata::position> &lookup_map, const hashl::data_offset_type x, std::vector<std::vector<std::map<uint64_t, hit_info> > > &hits) {
+static void add_range(const std::map<hashl::size_type, hashl_metadata::position> &lookup_map, const hashl::size_type x, std::vector<std::vector<std::map<uint64_t, hit_info> > > &hits) {
 	// convert data offset into file/read/read_start
-	// (sadly, lower_bound() doesn't return <= position, but >=)
+	// (lower_bound() doesn't return <= position, but >=)
 	// (divide x by 2 to convert to basepair position)
-	std::map<hashl::data_offset_type, hashl_metadata::position>::const_iterator pos(lookup_map.upper_bound(x / 2));
+	std::map<hashl::size_type, hashl_metadata::position>::const_iterator pos(lookup_map.upper_bound(x / 2));
 	--pos;
 	// add range, or extend overlapping one
 	std::map<uint64_t, hit_info> &ranges(hits[pos->second.file][pos->second.read]);
@@ -134,7 +134,7 @@ static void check_reference(const hashl &lookup, const hashl &reference, std::ve
 	// to convert data positions into file/read/range_start
 	hashl_metadata md;
 	md.unpack(reference.get_metadata());
-	std::map<hashl::data_offset_type, hashl_metadata::position> lookup_map;
+	std::map<hashl::size_type, hashl_metadata::position> lookup_map;
 	md.create_lookup_map(lookup_map);
 	// [file][read][range_start] = (range_end, if kmer is non-unique)
 	std::vector<std::vector<std::map<uint64_t, hit_info> > > hits(md.file_count());
@@ -147,7 +147,7 @@ static void check_reference(const hashl &lookup, const hashl &reference, std::ve
 	for (; a != end_a; ++a) {
 		if (*a && *a != hashl::invalid_value) {
 			a.key(key);
-			const std::pair<hashl::data_offset_type, hashl::small_value_type> x(reference.entry(key));
+			const std::pair<hashl::size_type, hashl::small_value_type> x(reference.entry(key));
 			// .second (the value) is 0 if the key is not found
 			if (x.second) {
 				add_range(lookup_map, x.first, hits);

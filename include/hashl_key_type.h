@@ -25,7 +25,6 @@ template<class T>
 class hashl_key_type {
     private:
 	typedef typename T::base_type base_type;
-	typedef typename T::data_offset_type data_offset_type;
 	typedef typename std::vector<base_type>::size_type size_type;
     private:
 	std::vector<base_type> k;		// stored in reverse - high word in [0]
@@ -101,7 +100,7 @@ class hashl_key_type {
 	}
 
 	// create key from bit offset into data
-	void copy_in(const std::vector<base_type> &data, const data_offset_type offset) {
+	void copy_in(const std::vector<base_type> &data, const size_type offset) {
 		// start of sequence in data
 		const size_type i = offset / (sizeof(base_type) * 8);
 		// how many bits we have in the first word
@@ -131,7 +130,7 @@ class hashl_key_type {
 	}
 
 	// same as copy_in(), but with breakpoints and not saving the generated key
-	bool equal_to(const std::vector<base_type> &data, const data_offset_type offset) const {
+	bool equal_to(const std::vector<base_type> &data, const size_type offset) const {
 		const size_type i = offset / (sizeof(base_type) * 8);
 		const base_type starting_bit = sizeof(base_type) * 8 - offset % (sizeof(base_type) * 8);
 		const base_type high_offset = bit_shift + 2;
@@ -171,7 +170,7 @@ class hashl_key_type {
 	}
 
 	// return if key < kmer at offset (mostly duplicates equal())
-	bool less_than(const std::vector<base_type> &data, const data_offset_type offset) const {
+	bool less_than(const std::vector<base_type> &data, const size_type offset) const {
 		const size_type i = offset / (sizeof(base_type) * 8);
 		const base_type starting_bit = sizeof(base_type) * 8 - offset % (sizeof(base_type) * 8);
 		const base_type high_offset = bit_shift + 2;

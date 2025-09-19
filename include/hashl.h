@@ -18,7 +18,6 @@ class hashl {
     public:	// type declarations
 	typedef unsigned char small_value_type;
 	typedef unsigned long hash_offset_type;
-	typedef unsigned long data_offset_type;
 	typedef uint64_t base_type;
 	typedef hashl_key_type<hashl> key_type;
 	typedef typename std::vector<base_type>::size_type size_type;
@@ -123,7 +122,7 @@ class hashl {
 	};
 
     protected:
-	std::vector<data_offset_type> key_list;
+	std::vector<size_type> key_list;
 	std::vector<small_value_type> value_list;
 	std::vector<small_value_type> value_list_backup;	// only used for filtering
 	std::vector<base_type> data;
@@ -137,9 +136,9 @@ class hashl {
 	std::string boilerplate() const;
 	hash_offset_type find_offset(const key_type &key) const;
 	hash_offset_type find_offset(const key_type &key, const key_type &comp_key) const;
-	hash_offset_type insert_offset(const key_type &key, const key_type &comp_key, data_offset_type);
+	hash_offset_type insert_offset(const key_type &key, const key_type &comp_key, size_type);
     private:
-	hash_offset_type insert_key(hash_offset_type, data_offset_type);
+	hash_offset_type insert_key(hash_offset_type, size_type);
     public:
 	explicit hashl() : used_elements(0), modulus(0), collision_modulus(0), bit_width(0), word_width(0) { }
 	// size of hash, bit size of key_type, sequence data
@@ -153,13 +152,13 @@ class hashl {
 	// will not insert new key
 	void increment(const key_type &key, const key_type &comp_key);
 	// will insert new key if missing, returns false if insertion failed
-	bool increment(const key_type &key, const key_type &comp_key, data_offset_type);
+	bool increment(const key_type &key, const key_type &comp_key, size_type);
 	// will insert new key if missing, or change an existing one to invalid
-	bool insert_unique(const key_type &key, const key_type &comp_key, data_offset_type);
+	bool insert_unique(const key_type &key, const key_type &comp_key, size_type);
 	// will insert a key with an invalid value, or convert existing value to invalid
-	bool insert_invalid(const key_type &key, const key_type &comp_key, data_offset_type);
+	bool insert_invalid(const key_type &key, const key_type &comp_key, size_type);
 	small_value_type value(const key_type &) const;
-	std::pair<data_offset_type, small_value_type> entry(const key_type &) const;
+	std::pair<size_type, small_value_type> entry(const key_type &) const;
 	hash_offset_type size() const {
 		return used_elements;
 	}
@@ -204,7 +203,7 @@ class hashl {
 		return data;
 	}
 	// start and length are in bits, not basepairs
-	void get_sequence(data_offset_type start, data_offset_type length, std::string &) const;
+	void get_sequence(size_type start, size_type length, std::string &) const;
 	void resize(hash_offset_type new_size);
 	void purge_invalid_values();
 	// add in new hashl - add new data, add or modify values
