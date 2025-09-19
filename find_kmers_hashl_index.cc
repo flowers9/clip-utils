@@ -1,4 +1,5 @@
 #include "hashl.h"	// hashl
+#include "hashl_index.h"	// hashl_index
 #include "hashl_metadata.h"	// hashl_metadata
 #include "open_compressed.h"	// close_compressed(), get_suffix(), open_compressed()
 #include "version.h"	// VERSION
@@ -19,7 +20,7 @@ static bool opt_fasta_format;
 static std::string opt_reference_files;
 
 static void print_usage() {
-	std::cerr << "usage: find_kmers_hashl <kmer_list_hash> <reference_hash1> [reference_hash2 [...] ]\n"
+	std::cerr << "usage: find_kmers_hashl_index <kmer_list_hash> <reference_hash1> [reference_hash2 [...] ]\n"
 		"    -f    fasta format output\n"
 		"    -h    print this help\n"
 		"    -o ## output file for base reference file names [stderr]\n"
@@ -42,7 +43,7 @@ static void get_opts(const int argc, char * const * const argv) {
 			opt_reference_files = optarg;
 			break;
 		    case 'V':
-			std::cerr << "find_kmers_hashl version " << VERSION << '\n';
+			std::cerr << "find_kmers_hashl_index version " << VERSION << '\n';
 			exit(0);
 		    default:
 			std::cerr << "Error: unknown option " << char(c) << '\n';
@@ -56,17 +57,17 @@ static void get_opts(const int argc, char * const * const argv) {
 
 struct hit_info {
 	uint64_t end;			// the map key is the start position
-	hashl::size_type offset;	// to pull out sequence later
+	hashl_index::size_type offset;	// to pull out sequence later
 };
 
 // add range, either as itself or extending an existing one
 // (possibly merging two)
 
-static void add_range(const std::map<hashl::size_type, hashl_metadata::position> &lookup_map, const hashl::size_type x, std::vector<std::vector<std::map<uint64_t, hit_info> > > &hits) {
+static void add_range(const std::map<hashl_index::size_type, hashl_metadata::position> &lookup_map, const hashl_index::size_type x, std::vector<std::vector<std::map<uint64_t, hit_info> > > &hits) {
 	// convert data offset into file/read/read_start
 	// (lower_bound() doesn't return <= position, but >=; upper_bound() is simply >)
 	// (divide x by 2 to convert to basepair position)
-	std::map<hashl::size_type, hashl_metadata::position>::const_iterator pos(lookup_map.upper_bound(x / 2));
+	std::map<hashl_index::size_type, hashl_metadata::position>::const_iterator pos(lookup_map.upper_bound(x / 2));
 	--pos;								// now pos is <=
 	// add range, or extend overlapping one
 	std::map<uint64_t, hit_info> &ranges(hits[pos->second.file][pos->second.read]);
@@ -102,7 +103,7 @@ static void add_range(const std::map<hashl::size_type, hashl_metadata::position>
 // output format is F#/read_name/start_end
 // (F# is 0-offset, end is exclusive)
 
-static void print_hits(const std::vector<std::vector<std::map<uint64_t, hit_info> > > &hits, const hashl_metadata &md, std::vector<std::string> &file_list, const hashl &reference) {
+static void print_hits(const std::vector<std::vector<std::map<uint64_t, hit_info> > > &hits, const hashl_metadata &md, std::vector<std::string> &file_list, const hashl_index &reference) {
 	const size_t mer_length(reference.bits() / 2);
 	const size_t file_offset(file_list.size());
 	std::string s;
@@ -129,12 +130,12 @@ static void print_hits(const std::vector<std::vector<std::map<uint64_t, hit_info
 // then map and combine them to form a list of ranges over reads in the
 // reference file(s), then print out those ranges as a fasta file
 
-static void check_reference(const hashl &lookup, const hashl &reference, std::vector<std::string> &file_list) {
+static void check_reference(const hashl &lookup, const hashl_index &reference, std::vector<std::string> &file_list) {
 	// collect positions of all matches
 	// to convert data positions into file/read/range_start
 	hashl_metadata md;
 	md.unpack(reference.get_metadata());
-	std::map<hashl::size_type, hashl_metadata::position> lookup_map;
+	std::map<hashl_index::size_type, hashl_metadata::position> lookup_map;
 	md.create_lookup_map(lookup_map);
 	// [file][read][range_start] = (range_end, if kmer is non-unique)
 	std::vector<std::vector<std::map<uint64_t, hit_info> > > hits(md.file_count());
@@ -147,11 +148,8 @@ static void check_reference(const hashl &lookup, const hashl &reference, std::ve
 	for (; a != end_a; ++a) {
 		if (*a && *a != hashl::invalid_value) {
 			a.key(key);
-			const std::pair<hashl::size_type, hashl::small_value_type> x(reference.entry(key));
-			// .second (the value) is 0 if the key is not found
-			if (x.second) {
-				add_range(lookup_map, x.first, hits);
-			}
+			hashl_index::size_type x = reference.position(key);
+			add_range(lookup_map, x, hits);
 		}
 	}
 	print_hits(hits, md, file_list, reference);
@@ -187,14 +185,13 @@ int main(const int argc, char * const * const argv) {
 	close_compressed(fd);
 	// loop through reference_hashes to generate ranges
 	std::vector<std::string> file_list;
-	hashl reference_hash;
 	for (int i(optind + 1); i < argc; ++i) {
 		fd = open_compressed(argv[i]);
 		if (fd == -1) {
 			std::cerr << "Error: could not read reference hash: " << argv[i] << '\n';
 			return 1;
 		}
-		reference_hash.init_from_file(fd);
+		hashl_index reference_hash(fd);
 		close_compressed(fd);
 		check_reference(lookup_hash, reference_hash, file_list);
 	}
