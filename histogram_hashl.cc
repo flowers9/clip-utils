@@ -86,7 +86,7 @@ void print_final_input_feedback(const hashl &mer_list) {
 // print n-mer occurence frequency
 
 static void print_mer_frequency(std::ostream &fp_out, const hashl &mer_list) {
-	hashl::key_type key(mer_list), comp_key(mer_list);
+	hashl::key_type key(mer_list.bits(), mer_list.words()), comp_key(mer_list.bits(), mer_list.words());
 	hashl::const_iterator a(mer_list.cbegin());
 	const hashl::const_iterator end_a(mer_list.cend());
 	for (; a != end_a; ++a) {
@@ -122,7 +122,7 @@ static unsigned long count_gc(const hashl::key_type &key) {
 static void print_mer_histogram(std::ostream &fp_out, const hashl &mer_list) {
 	std::map<hashl::small_value_type, unsigned long> counts;
 	std::map<hashl::small_value_type, unsigned long> gc_counts;
-	hashl::key_type key(mer_list);
+	hashl::key_type key(mer_list.bits(), mer_list.words());
 	hashl::const_iterator a(mer_list.cbegin());
 	const hashl::const_iterator end_a(mer_list.cend());
 	for (; a != end_a; ++a) {
@@ -394,7 +394,7 @@ class CountState {
 	size_t j, k;
 	const std::vector<hashl::base_type> &data;
     public:
-	explicit CountState(const hashl &mer_list) : key(mer_list), comp_key(mer_list), j(0), k(sizeof(hashl::base_type) * 8 - 2), data(mer_list.get_data()) { }
+	explicit CountState(const hashl &mer_list) : key(mer_list.bits(), mer_list.words()), comp_key(mer_list.bits(), mer_list.words()), j(0), k(sizeof(hashl::base_type) * 8 - 2), data(mer_list.get_data()) { }
 	~CountState() { }
 	void increment_keys() {
 		const hashl::base_type c = (data[j] >> k) & 3;
@@ -457,7 +457,7 @@ static void count_nmers_window(hashl &mer_list, const std::vector<size_t> &read_
 	// window_mers needs at least window_size entries, but a bit more does help
 	size_t hash_size = 1;
 	for (; hash_size < window_size; hash_size <<= 1) { }
-	std::unordered_map<std::vector<hashl::base_type>, unsigned int, hashl_key_hash<hashl> > window_mers(hash_size << 1);
+	std::unordered_map<std::vector<hashl::base_type>, unsigned int, hashl_key_hash<hashl::base_type> > window_mers(hash_size << 1);
 	CountState x(mer_list);
 	size_t i = 0, total_read_ranges = 0;
 	// iterate over all reads (nmers can't cross read range boundaries)

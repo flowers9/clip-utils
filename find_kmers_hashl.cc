@@ -143,7 +143,7 @@ static void check_reference(const hashl &lookup, const hashl &reference, std::ve
 	}
 	hashl::const_iterator a(lookup.cbegin());
 	const hashl::const_iterator end_a(lookup.cend());
-	hashl::key_type key(lookup);
+	hashl::key_type key(lookup.bits(), lookup.words());
 	for (; a != end_a; ++a) {
 		if (*a && *a != hashl::invalid_value) {
 			a.key(key);

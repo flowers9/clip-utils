@@ -124,7 +124,7 @@ hashl::hash_offset_type hashl::find_offset(const key_type &key, const key_type &
 }
 
 hashl::hash_offset_type hashl::find_offset(const key_type &key) const {
-	key_type comp_key(*this);
+	key_type comp_key(bit_width, word_width);
 	comp_key.make_complement(key);
 	return find_offset(key, comp_key);
 }
@@ -234,7 +234,7 @@ void hashl::resize(hash_offset_type size_asked) {
 	std::vector<small_value_type> old_value_list(modulus, 0);
 	value_list.swap(old_value_list);
 	// copy over old hash keys and values
-	key_type key(*this), comp_key(*this);
+	key_type key(bit_width, word_width), comp_key(bit_width, word_width);
 	for (hash_offset_type i(0); i < old_modulus; ++i) {
 		if (old_key_list[i] != invalid_key && old_value_list[i]) {
 			key.copy_in(data, old_key_list[i]);
@@ -283,7 +283,7 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 	data.reserve(data.size() + a.data.size());
 	data.insert(data.end(), a.data.begin(), a.data.end());
 	// loop over incoming hash and increment or invalidate entries as needed
-	key_type key(a), comp_key(a);
+	key_type key(a.bits(), a.words()), comp_key(a.bits(), a.words());
 	for (size_type i(0); i < a.modulus; ++i) {
 		if (a.key_list[i] != invalid_key) {
 			key.copy_in(a.data, a.key_list[i]);
@@ -346,7 +346,7 @@ void hashl::print(void) const {
 		<< "data size: " << data.size() * sizeof(base_type) << "\n"
 		<< "offset/value/key pairs:\n";
 	std::string s;
-	key_type k(*this);
+	key_type k(bit_width, word_width);
 	for (hash_offset_type i(0); i < modulus; ++i) {
 		if (key_list[i] != invalid_key) {
 			k.copy_in(data, key_list[i]);

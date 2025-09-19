@@ -244,7 +244,7 @@ static bool load_and_combine_hashes(hashl &kmer_hash, const std::vector<std::str
 static void cross_ref_stdout(const hashl &reference_kmers, const hashl &fastq_kmers) {
 	hashl::const_iterator a(fastq_kmers.cbegin());
 	const hashl::const_iterator end_a(fastq_kmers.cend());
-	hashl::key_type key(fastq_kmers), comp_key(fastq_kmers);
+	hashl::key_type key(fastq_kmers.bits(), fastq_kmers.words()), comp_key(fastq_kmers.bits(), fastq_kmers.words());
 	std::string s;
 	for (; a != end_a; ++a) {
 		if (*a && *a != hashl::invalid_value) {
@@ -267,7 +267,7 @@ static void cross_ref_stdout(const hashl &reference_kmers, const hashl &fastq_km
 static void cross_ref_save(const hashl &reference_kmers, hashl &fastq_kmers) {
 	hashl::iterator a(fastq_kmers.begin());
 	const hashl::iterator end_a(fastq_kmers.end());
-	hashl::key_type key(fastq_kmers);
+	hashl::key_type key(fastq_kmers.bits(), fastq_kmers.words());
 	for (; a != end_a; ++a) {
 		if (*a && *a != hashl::invalid_value) {
 			a.key(key);

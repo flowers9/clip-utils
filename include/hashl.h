@@ -19,7 +19,7 @@ class hashl {
 	typedef unsigned char small_value_type;
 	typedef unsigned long hash_offset_type;
 	typedef uint64_t base_type;
-	typedef hashl_key_type<hashl> key_type;
+	typedef hashl_key_type<base_type> key_type;
 	typedef typename std::vector<base_type>::size_type size_type;
 	// invalid_value must be greater than max_small_value
 	enum { max_small_value = UCHAR_MAX - 1, invalid_value = UCHAR_MAX, invalid_key = ULONG_MAX };

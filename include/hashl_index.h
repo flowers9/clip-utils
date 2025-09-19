@@ -21,7 +21,7 @@
 class hashl_index {
     public:	// type declarations
 	typedef uint64_t base_type;
-	typedef hashl_key_type<hashl_index> key_type;
+	typedef hashl_key_type<base_type> key_type;
 	typedef typename std::vector<base_type>::size_type size_type;
 
 	class const_iterator {

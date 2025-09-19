@@ -151,7 +151,7 @@ static hashl::base_type convert_char(const char c) {
 }
 
 static void count_sequence_mers(hashl &reference_kmers, const std::string &seq, size_t i, const size_t end) {
-	hashl::key_type key(reference_kmers), comp_key(reference_kmers);
+	hashl::key_type key(reference_kmers.bits(), reference_kmers.words()), comp_key(reference_kmers.bits(), reference_kmers.words());
 	const size_t preload_end(i + opt_mer_length - 1);
 	for (; i < preload_end; ++i) {
 		const hashl::base_type c(convert_char(seq[i]));

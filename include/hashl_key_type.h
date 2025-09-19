@@ -6,10 +6,9 @@
 
 // a hash for broken-out keys (i.e., just the plain vector)
 
-template<class T>
+template<typename base_type>
 class hashl_key_hash {
     private:
-	typedef typename T::base_type base_type;
 	typedef typename std::vector<base_type>::size_type size_type;
     public:
 	base_type operator()(const std::vector<base_type> &k) const noexcept {
@@ -21,10 +20,9 @@ class hashl_key_hash {
 	}
 };
 
-template<class T>
+template<typename base_type>
 class hashl_key_type {
     private:
-	typedef typename T::base_type base_type;
 	typedef typename std::vector<base_type>::size_type size_type;
     private:
 	std::vector<base_type> k;		// stored in reverse - high word in [0]
@@ -44,7 +42,7 @@ class hashl_key_type {
 		return !(*this == __a);
 	}
 	base_type hash() const noexcept {
-		return hashl_key_hash<T>()(k);
+		return hashl_key_hash<base_type>()(k);
 	}
 	int basepair(const size_type __i) const {
 		const size_type __n(__i / (sizeof(base_type) * 8));
@@ -54,7 +52,7 @@ class hashl_key_type {
 	const size_type bit_shift;	// precalc for push_front
 	const base_type high_mask;	// precalc for push_back
     public:
-	explicit hashl_key_type(const T &__a) : k(__a.words(), 0), bit_shift((__a.bits() - 2) % (sizeof(base_type) * 8)), high_mask(static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - __a.bits() % (sizeof(base_type) * 8)) % (sizeof(base_type) * 8)) { }
+	explicit hashl_key_type(const size_type bits, const size_type words) : k(words, 0), bit_shift((bits - 2) % (sizeof(base_type) * 8)), high_mask(static_cast<base_type>(-1) >> (sizeof(base_type) * 8 - bits % (sizeof(base_type) * 8)) % (sizeof(base_type) * 8)) { }
 	~hashl_key_type() { }
 	bool operator<(const hashl_key_type &__a) const {
 		for (size_type __i(0); __i != k.size(); ++__i) {

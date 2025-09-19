@@ -69,7 +69,7 @@ hashl_index::size_type hashl_index::position(const key_type &key) const {
 		return i;
 	}
 	// and now check the reverse complement
-	key_type comp_key(*this);
+	key_type comp_key(bit_width, word_width);
 	comp_key.make_complement(key);
 	for (i = 0, j = key_list.size(); i + 1 < j;) {
 		const size_type m = (i + j) / 2;
@@ -104,7 +104,7 @@ void hashl_index::print() const {
 		<< "data size: " << data.size() * sizeof(base_type) << "\n"
 		<< "offset/key pairs:\n";
 	std::string s;
-	key_type k(*this);
+	key_type k(bit_width, word_width);
 	for (size_type i(0); i < key_list.size(); ++i) {
 		k.copy_in(data, key_list[i]);
 		k.convert_to_string(s);
