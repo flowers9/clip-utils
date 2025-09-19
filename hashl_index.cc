@@ -63,19 +63,19 @@ hashl_index::size_type hashl_index::position(const key_type &key) const {
 	size_type i = 0, j = key_list.size();
 	while (i + 1 < j) {
 		const size_type m = (i + j) / 2;
-		(key.less_than(data, m) ? j : i) = m;
+		(key.less_than(data, key_list[m]) ? j : i) = m;
 	}
-	if (key.equal_to(data, i)) {
-		return i;
+	if (key.equal_to(data, key_list[i])) {
+		return key_list[i];
 	}
 	// and now check the reverse complement
 	key_type comp_key(bit_width, word_width);
 	comp_key.make_complement(key);
 	for (i = 0, j = key_list.size(); i + 1 < j;) {
 		const size_type m = (i + j) / 2;
-		(comp_key.less_than(data, m) ? j : i) = m;
+		(comp_key.less_than(data, key_list[m]) ? j : i) = m;
 	}
-	return comp_key.equal_to(data, i) ? i : -1;
+	return comp_key.equal_to(data, key_list[i]) ? key_list[i] : -1;
 }
 
 void hashl_index::get_sequence(const size_type start, const size_type length, std::string &seq) const {
@@ -96,8 +96,8 @@ void hashl_index::get_sequence(const size_type start, const size_type length, st
 
 void hashl_index::print() const {
 	int max_offset_width(1), max_key_width(1);
-	for (size_type i(10); i < key_list.size(); i *= 10, ++max_offset_width) { }
-	for (size_type i(10); i < data.size() * sizeof(base_type) * 8; i *= 10, ++max_key_width) { }
+	for (size_type i = 10; i < key_list.size(); i *= 10, ++max_offset_width) { }
+	for (size_type i = 10; i < data.size() * sizeof(base_type) * 8; i *= 10, ++max_key_width) { }
 	std::cout << "elements: " << key_list.size() << "\n"
 		<< "bit width: " << bit_width << "\n"
 		<< "metadata size: " << metadata.size() << "\n"
@@ -105,9 +105,9 @@ void hashl_index::print() const {
 		<< "offset/key pairs:\n";
 	std::string s;
 	key_type k(bit_width, word_width);
-	for (size_type i(0); i < key_list.size(); ++i) {
+	for (size_type i = 0; i < key_list.size(); ++i) {
 		k.copy_in(data, key_list[i]);
-		k.get_string(s);
+		k.get_sequence(s);
 		std::cout << std::setw(max_offset_width) << i << ' ' << std::setw(max_key_width) << key_list[i] << ' ' << s << "\n";
 	}
 }

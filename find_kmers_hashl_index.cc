@@ -20,7 +20,7 @@ static bool opt_fasta_format;
 static std::string opt_reference_files;
 
 static void print_usage() {
-	std::cerr << "usage: find_kmers_hashl_index <kmer_list_hash> <reference_hash1> [reference_hash2 [...] ]\n"
+	std::cerr << "usage: find_kmers_hashl_index <kmer_list_hash> <reference_index1> [reference_index2 [...] ]\n"
 		"    -f    fasta format output\n"
 		"    -h    print this help\n"
 		"    -o ## output file for base reference file names [stderr]\n"
@@ -149,7 +149,9 @@ static void check_reference(const hashl &lookup, const hashl_index &reference, s
 		if (*a && *a != hashl::invalid_value) {
 			a.key(key);
 			hashl_index::size_type x = reference.position(key);
-			add_range(lookup_map, x, hits);
+			if (x != hashl_index::size_type(-1)) {
+				add_range(lookup_map, x, hits);
+			}
 		}
 	}
 	print_hits(hits, md, file_list, reference);
