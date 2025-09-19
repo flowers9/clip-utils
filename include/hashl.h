@@ -214,7 +214,7 @@ class hashl {
 	void filtering_prep(bool backup_values = 1);
 	// restore value_list for values in min-max, set to invalid_value for rest
 	void filtering_finish(small_value_type min, small_value_type max);
-	// this destroys the hash, as it involves sorting key_list in place
+	// after saving, this resets hash to pre-initted state
 	void save_index(int);
 };
 

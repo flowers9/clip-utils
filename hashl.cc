@@ -421,14 +421,16 @@ void hashl::save_index(const int fd) {
 	// shift valid key_list entries to bottom of array
 	auto a = key_list.begin();
 	auto end_a = a + used_elements;
+	// we are guaranteed at least one invalid_key, so this will terminate
 	for (; *a != invalid_key; ++a) { }
 	auto b = end_a;
+	// have to swap() first pair to ensure *end_a == invalid_key
 	for (; *b == invalid_key; ++b) { }
-	// have to swap first pair to ensure *end_a == invalid_key
 	std::swap(*a, *b);
 	for (++a; *a != invalid_key; ++a) { }
-	for (++b; a != end_a; ++b) {
-		for (; *b == invalid_key; ++b) { }
+	// always check a first, so b won't go past end of array
+	while (a != end_a) {
+		for (++b; *b == invalid_key; ++b) { }
 		*a = *b;
 		for (++a; *a != invalid_key; ++a) { }
 	}
@@ -438,4 +440,13 @@ void hashl::save_index(const int fd) {
 	std::sort(key_list.begin(), key_list.end(), [this](const hash_offset_type __a, const hash_offset_type __b) {return hashl_less<hashl>()(*this, __a, __b);});
 	// save everything to an index
 	hashl_index::save(key_list, data, metadata, bit_width, fd);
+	// finish resetting this to pre-initted state
+	key_list = std::vector<size_type>();
+	data = std::vector<base_type>();
+	metadata = std::vector<char>();
+	used_elements = 0;
+	modulus = 0;
+	collision_modulus = 0;
+	bit_width = 0;
+	word_width = 0;
 }

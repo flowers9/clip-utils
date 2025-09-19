@@ -54,9 +54,9 @@ hashl_index::hashl_index(const int fd) {
 // our vector can only record the values that actually show up in the
 // sequence, whichever one it is)
 
-// note: might be faster with a tri-value comparison (-1, 0, 1)?
-
 // returns -1 if kmer is not found
+
+// note: might be faster with a tri-value comparison (-1, 0, 1)?
 
 hashl_index::size_type hashl_index::position(const key_type &key) const {
 	// do a binary search, comparing key to kmers at data offsets given by array values
