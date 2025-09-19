@@ -107,7 +107,7 @@ void hashl_index::print() const {
 	key_type k(bit_width, word_width);
 	for (size_type i(0); i < key_list.size(); ++i) {
 		k.copy_in(data, key_list[i]);
-		k.convert_to_string(s);
+		k.get_string(s);
 		std::cout << std::setw(max_offset_width) << i << ' ' << std::setw(max_key_width) << key_list[i] << ' ' << s << "\n";
 	}
 }

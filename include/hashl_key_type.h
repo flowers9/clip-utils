@@ -87,7 +87,7 @@ class hashl_key_type {
 		}
 	}
 
-	void convert_to_string(std::string &sequence) const {
+	void get_string(std::string &sequence) const {
 		const char values[4] = { 'A', 'C', 'G', 'T' };
 		sequence.clear();
 		const size_type bit_width(bit_shift + 2 + (k.size() - 1) * sizeof(base_type) * 8);

@@ -350,7 +350,7 @@ void hashl::print(void) const {
 	for (hash_offset_type i(0); i < modulus; ++i) {
 		if (key_list[i] != invalid_key) {
 			k.copy_in(data, key_list[i]);
-			k.convert_to_string(s);
+			k.get_string(s);
 			std::cout << std::setw(max_offset_width) << i << ' ' << std::setw(max_key_width) << key_list[i] << ' ' << std::setw(3) << static_cast<unsigned int>(value_list[i]) << ' ' << s << "\n";
 		}
 	}

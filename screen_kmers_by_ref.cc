@@ -252,11 +252,11 @@ static void cross_ref_stdout(const hashl &reference_kmers, const hashl &fastq_km
 			// .value() returns 0 if key not found
 			const hashl::small_value_type x(reference_kmers.value(key));
 			if (x && x != hashl::invalid_value && x <= static_cast<unsigned int>(opt_max_kmer_sharing)) {
-				key.convert_to_string(s);
+				key.get_string(s);
 				std::cout << s << ' ' << static_cast<unsigned int>(x) << '\n';
 				comp_key.make_complement(key);
 				if (key != comp_key) {
-					comp_key.convert_to_string(s);
+					comp_key.get_string(s);
 					std::cout << s << ' ' << static_cast<unsigned int>(x) << ' ' << '\n';
 				}
 			}
