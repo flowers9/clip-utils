@@ -58,6 +58,7 @@ class hashl_index {
 	};
 
     protected:
+	// can't use std::span or std::array, as this has a variable size
 	const size_type *key_list;
 	size_type key_list_size, page_offset;
 	std::vector<base_type> data;
