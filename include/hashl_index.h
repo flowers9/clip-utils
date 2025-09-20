@@ -58,23 +58,23 @@ class hashl_index {
 	};
 
     protected:
-	std::vector<size_type> key_list;
+	const size_type *key_list;
+	size_type key_list_size, page_offset;
 	std::vector<base_type> data;
 	std::vector<char> metadata;
 	size_type bit_width;
 	size_type word_width;
-	int index_file;
     protected:
-	static std::string boilerplate();
+	static std::string boilerplate();	// static so it can be used from save()
     public:
 	// can only be initialized from an uncompressed file
 	explicit hashl_index(int);
-	~hashl_index() { }
+	~hashl_index();
 	size_type size() const {
-		return key_list.size();
+		return key_list_size;
 	}
 	bool empty() const {
-		return key_list.empty();
+		return !key_list_size;
 	}
 	size_type bits() const {
 		return bit_width;
@@ -86,7 +86,7 @@ class hashl_index {
 		return const_iterator(*this, 0);
 	}
 	const_iterator cend() const {
-		return const_iterator(*this, key_list.size());
+		return const_iterator(*this, key_list_size);
 	}
 	// returns -1 if not found
 	size_type position(const key_type &key) const;

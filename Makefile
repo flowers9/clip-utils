@@ -27,7 +27,7 @@ endif
 ifeq ($(OS), Linux)
 DEBUG += -O3 -pthread -mfpmath=sse -march=native -flto -fno-fat-lto-objects -fno-builtin -mmmx -msse -msse2 -mssse3 -msse4.1 -msse4.2 -mpopcnt -mfxsr
 #ifeq ($(HOST), pc23-gsc)
-# more recent pacbio libraries need newer c++, as well as includes and libraries
+# more recent pacbio libraries need c++17, as well as includes and libraries
 CPPFLAGS += -std=c++17
 PACBIO_INCLUDES = -I./pbbam-2.1.0/include -I./pbcopper-2.0.0/include -I./htslib-1.17
 # need to put -lpbcopper before -lpbbam, or it won't find the library at run time
