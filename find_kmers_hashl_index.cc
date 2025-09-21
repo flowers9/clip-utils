@@ -140,9 +140,15 @@ static void print_hits(const std::vector<std::vector<std::map<uint64_t, hit_info
 static void merge_ranges(std::map<uint64_t, hit_info> &list, const hashl_index::size_type mer_length) {
 	for (auto a = list.begin();;) {
 		auto b = std::next(a);
-		while (b != list.end() && a->second.end + mer_length + 1 >= b->first) {
+		if (b == list.end()) {
+			return;
+		}
+		while (a->second.end + mer_length >= b->first) {
 			a->second.end = b->second.end;
 			b = list.erase(b);
+			if (b == list.end()) {
+				return;
+			}
 		}
 		a = b;
 	}
@@ -178,9 +184,11 @@ static void check_reference(const hashl &lookup, const hashl_index &reference, s
 	}
 	// merge nearby ranges with overlapping (but non-adjacent) kmers
 	if (opt_merge_ranges) {
-		for (auto &b : hits) {					// loop over files
-			for (auto &c : b) {				// loop over reads
-				merge_ranges(c, lookup.bits() / 2);	// merge ranges on same read
+		for (auto &b : hits) {			// loop over files
+			for (auto &c : b) {		// loop over reads
+				if (!c.empty()) {	// merge ranges on same read
+					merge_ranges(c, lookup.bits() / 2);
+				}
 			}
 		}
 	}
