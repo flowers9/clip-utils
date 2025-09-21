@@ -6,6 +6,7 @@
 #include <fstream>	// ofstream
 #include <getopt.h>	// getopt(), optarg, optind
 #include <iostream>	// cerr, cout, ostream
+#include <iterator>	// next(), prev()
 #include <map>		// map<>
 #include <stdlib.h>	// exit()
 #include <string>	// string
@@ -16,27 +17,39 @@
 // create a file of the matched ranges (exclusive end)
 
 static bool opt_fasta_format;
+static bool opt_merge_ranges;
 static std::string opt_reference_files;
 
 static void print_usage() {
 	std::cerr << "usage: find_kmers_hashl <kmer_list_hash> <reference_hash1> [reference_hash2 [...] ]\n"
 		"    -f    fasta format output\n"
 		"    -h    print this help\n"
+		"    -m    merge overlapping ranges*\n"
 		"    -o ## output file for base reference file names [stderr]\n"
-		"    -V    print version\n";
+		"    -V    print version\n"
+		"\n"
+		"* Normally, found positions are merged into ranges when adjacent to each\n"
+		"other; however, when printed out, the full extent of the kmers found are\n"
+		"displayed, which may result in nearby ranges that didn't merge appearing\n"
+		"to overlap.  This happens because one or more kmers between the two\n"
+		"ranges was not found, having been removed from the reference kmer list.\n"
+		"If you don't care about that, you can specify -m to clean up the output.\n";
 	exit(1);
 }
 
 static void get_opts(const int argc, char * const * const argv) {
 	opt_fasta_format = 0;
 	int c;
-	while ((c = getopt(argc, argv, "fho:V")) != EOF) {
+	while ((c = getopt(argc, argv, "fhmo:V")) != EOF) {
 		switch (c) {
 		    case 'f':
 			opt_fasta_format = 1;
 			break;
 		    case 'h':
 			print_usage();
+			break;
+		    case 'm':
+			opt_merge_ranges = 1;
 			break;
 		    case 'o':
 			opt_reference_files = optarg;
@@ -76,10 +89,9 @@ static void add_range(const std::map<hashl::size_type, hashl_metadata::position>
 		std::map<uint64_t, hit_info>::iterator a(ranges.upper_bound(start));
 		// see if we follow an existing range
 		if (a != ranges.begin()) {
-			std::map<uint64_t, hit_info>::iterator b(a);
-			--b;
+			std::map<uint64_t, hit_info>::iterator b = std::prev(a);
 			if (b->second.end + 1 == start) {
-				// merge with following entry?
+				// also merge with following entry?
 				if (a != ranges.end() && start + 1 == a->first) {
 					b->second.end = a->second.end;
 					ranges.erase(a);
@@ -110,18 +122,34 @@ static void print_hits(const std::vector<std::vector<std::map<uint64_t, hit_info
 		file_list.push_back(md.file(i));
 		const std::vector<std::map<uint64_t, hit_info> > &reads(hits[i]);
 		for (size_t j(0); j < reads.size(); ++j) {
-			std::map<uint64_t, hit_info>::const_iterator a(reads[j].begin());
-			const std::map<uint64_t, hit_info>::const_iterator end_a(reads[j].end());
-			for (; a != end_a; ++a) {
+			for (const auto &a : reads[j]) {
 				if (opt_fasta_format) {
-					std::cout << ">F" << file_offset + i << '/' << md.read(i, j) << '/' << a->first << '_' << a->second.end + mer_length << '\n';
-					reference.get_sequence(a->second.offset, (a->second.end + mer_length - a->first) * 2, s);
+					std::cout << ">F" << file_offset + i << '/' << md.read(i, j) << '/' << a.first << '_' << a.second.end + mer_length << '\n';
+					reference.get_sequence(a.second.offset, (a.second.end + mer_length - a.first) * 2, s);
 					std::cout << s << '\n';
 				} else {
-					std::cout << 'F' << file_offset + i << '/' << md.read(i, j) << '/' << a->first << '_' << a->second.end + mer_length << '\n';
+					std::cout << 'F' << file_offset + i << '/' << md.read(i, j) << '/' << a.first << '_' << a.second.end + mer_length << '\n';
 				}
 			}
 		}
+	}
+}
+
+// merge non-adjacent, overlapping ranges
+static void merge_ranges(std::map<uint64_t, hit_info> &list, const hashl::size_type mer_length) {
+	for (auto a = list.begin();;) {
+		auto b = std::next(a);
+		if (b == list.end()) {
+			return;
+		}
+		while (a->second.end + mer_length >= b->first) {
+			a->second.end = b->second.end;
+			b = list.erase(b);
+			if (b == list.end()) {
+				return;
+			}
+		}
+		a = b;
 	}
 }
 
@@ -151,6 +179,16 @@ static void check_reference(const hashl &lookup, const hashl &reference, std::ve
 			// .second (the value) is 0 if the key is not found
 			if (x.second) {
 				add_range(lookup_map, x.first, hits);
+			}
+		}
+	}
+	// merge nearby ranges with overlapping (but non-adjacent) kmers
+	if (opt_merge_ranges) {
+		for (auto &b : hits) {			// loop over files
+			for (auto &c : b) {		// loop over reads
+				if (!c.empty()) {	// merge ranges on same read
+					merge_ranges(c, lookup.bits() / 2);
+				}
 			}
 		}
 	}
