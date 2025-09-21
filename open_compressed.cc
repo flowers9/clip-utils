@@ -286,12 +286,12 @@ int find_suffix(std::string &filename, std::string &suffix) {
 // if file is not found, .gz, .bz2, .xz, and .Z are added to end, to see
 // if file is compressed
 
-int open_compressed(const std::string &filename) {
+int open_compressed(const std::string &filename, bool force_uncompressed) {
 	int fd(-1);
 	std::string s(filename);
 	std::string suffix;
 	// see if file exists
-	if (!s.empty() && s.compare("-") != 0 && find_suffix(s, suffix) == -1) {
+	if (!s.empty() && s.compare("-") != 0 && (force_uncompressed || find_suffix(s, suffix) == -1)) {
 		return -1;
 	}
 	if (!suffix.empty()) {

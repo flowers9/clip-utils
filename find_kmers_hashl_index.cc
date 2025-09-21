@@ -226,9 +226,9 @@ int main(const int argc, char * const * const argv) {
 	// loop through reference_hashes to generate ranges
 	std::vector<std::string> file_list;
 	for (int i(optind + 1); i < argc; ++i) {
-		fd = open_compressed(argv[i]);
+		fd = open_compressed(argv[i], 1);
 		if (fd == -1) {
-			std::cerr << "Error: could not read reference hash: " << argv[i] << '\n';
+			std::cerr << "Error: could not read reference index: " << argv[i] << '\n';
 			return 1;
 		}
 		hashl_index reference_hash(fd);
