@@ -28,7 +28,8 @@ std::string hashl_index::boilerplate() {
 	return s;
 }
 
-hashl_index::hashl_index(const int fd) {
+// need to initialize key_list up front to prep destructor
+hashl_index::hashl_index(const int fd) : key_list(0) {
 	const std::string s(boilerplate());
 	char t[s.size()];
 	size_type key_list_offset = pfread(fd, t, s.size());
@@ -49,20 +50,24 @@ hashl_index::hashl_index(const int fd) {
 	key_list_offset += pfread(fd, &key_list_size, sizeof(key_list_size));
 	size_type padding_size;
 	key_list_offset += pfread(fd, &padding_size, sizeof(padding_size));
-	// we don't have to actually read the padding ;)
+	// we don't have to actually read in the padding ;)
 	key_list_offset += padding_size;
+	// key_list needs to start on a page boundary, and as created it will, but if
+	// it's read on a machine with a different page size we might need to offset
 	page_offset = key_list_offset % sysconf(_SC_PAGE_SIZE);
 	if (page_offset % sizeof(size_type)) {
+		// page_offset has to be a multiple of size_type, but it this would
+		// only fail on a really weird machine
 		std::cerr << "Error: could not align to start of key_list: " << page_offset << " not a multiple of " << sizeof(size_type) << '\n';
 		exit(1);
 	}
-	// inform system we'll be accessing randomly, so don't be clever about reading ahead
-	// this is only advisory, so don't worry about it failing
+	// inform system we'll be accessing randomly, so don't be clever about reading ahead;
+	// this is only advisory anyway, so don't worry about it failing
 	posix_fadvise(fd, key_list_offset, 0, POSIX_FADV_RANDOM);
 	key_list = static_cast<const size_type *>(mmap(0, key_list_size * sizeof(size_type) + page_offset, PROT_READ, MAP_PRIVATE, fd, key_list_offset - page_offset));
 	if (key_list == MAP_FAILED) {
-		key_list = 0;
 		std::cerr << "Error: mmap(" << errno << "): " << std::string(strerror(errno)) << '\n';
+		key_list = 0;	// prevent munmap() on destruction
 		exit(1);
 	}
 	key_list += page_offset / sizeof(size_type);
@@ -70,7 +75,7 @@ hashl_index::hashl_index(const int fd) {
 
 hashl_index::~hashl_index() {
 	if (key_list) {
-		munmap(0, key_list_size * sizeof(size_type) + page_offset);
+		munmap(key_list - page_offset / sizeof(size_type), key_list_size * sizeof(size_type) + page_offset);
 	}
 }
 
