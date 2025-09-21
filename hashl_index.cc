@@ -75,7 +75,8 @@ hashl_index::hashl_index(const int fd) : key_list(0) {
 
 hashl_index::~hashl_index() {
 	if (key_list) {
-		munmap(key_list - page_offset / sizeof(size_type), key_list_size * sizeof(size_type) + page_offset);
+		// yay for munmap not allowing a pointer to a const type
+		munmap(const_cast<size_type *>(key_list - page_offset / sizeof(size_type)), key_list_size * sizeof(size_type) + page_offset);
 	}
 }
 
