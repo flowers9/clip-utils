@@ -206,7 +206,8 @@ static void print_usage() {
 		"    -V    print version\n"
 		"    -w ## print frequency count instead of histogram, for all n-mers with\n"
 		"          a frequency of at least ## [0 (off)] (-1 => print nothing)\n"
-		"    -W ## window size for allowing repeat n-mers [0 (off)]\n"
+		"    -W ## window size for allowing repeat n-mers [0 (off)] (in number of\n"
+		"          consecutive kmers - effective window size is ## + kmer length - 1)\n"
 		"    -z ## number of possible n-mers to allocate memory for (overrides -l/-L)\n"
 		"          (k, m, or g may be suffixed)\n";
 	exit(1);
