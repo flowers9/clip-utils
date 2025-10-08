@@ -49,6 +49,7 @@ void hashl::init_from_file(const int fd) {
 	}
 	pfread(fd, &modulus, sizeof(modulus));
 	pfread(fd, &collision_modulus, sizeof(collision_modulus));
+	// this value is no longer used, read in here for backward compatibility
 	pfread(fd, &used_elements, sizeof(used_elements));
 	pfread(fd, &bit_width, sizeof(bit_width));
 	word_width = (bit_width + 8 * sizeof(base_type) - 1) / (8 * sizeof(base_type));
@@ -63,9 +64,12 @@ void hashl::init_from_file(const int fd) {
 	value_list.assign(modulus, 0);
 	pfread(fd, &value_list[0], sizeof(small_value_type) * modulus);
 	key_list.assign(modulus, invalid_key);
+	// set used_elements based on actual use
+	used_elements = 0;
 	for (hash_offset_type i(0); i < modulus; ++i) {
 		if (value_list[i]) {
 			pfread(fd, &key_list[i], sizeof(size_type));
+			++used_elements;
 		}
 	}
 }
@@ -207,7 +211,8 @@ void hashl::save(const int fd) const {
 	pfwrite(fd, &data[0], sizeof(base_type) * data.size());
 	pfwrite(fd, &value_list[0], sizeof(small_value_type) * modulus);
 	for (hash_offset_type i(0); i < modulus; ++i) {
-		if (key_list[i] != invalid_key) {
+		// have to remove keys with zero values as they don't get read in
+		if (value_list[i] && key_list[i] != invalid_key) {
 			pfwrite(fd, &key_list[i], sizeof(size_type));
 		}
 	}
@@ -387,7 +392,8 @@ void hashl::filtering_prep(const bool backup_values) {
 	}
 }
 
-// set values to invalid_value if the new values don't fall between min and max
+// with no backup, set values to invalid_value if the new values don't fall between min and max
+// with backup, remove values that don't fall between min and max (and resize)
 // TODO: add restore_values parameter and double check versus existence of backup vector
 
 void hashl::filtering_finish(const hashl::small_value_type min, const hashl::small_value_type max) {
@@ -401,10 +407,12 @@ void hashl::filtering_finish(const hashl::small_value_type min, const hashl::sma
 		value_list.swap(value_list_backup);
 		for (hash_offset_type i(0); i < modulus; ++i) {
 			if (key_list[i] != invalid_key && (value_list_backup[i] < min || max < value_list_backup[i])) {
-				value_list[i] = invalid_value;
+				value_list[i] = 0;
+				--used_elements;
 			}
 		}
-		value_list_backup.clear();
+		value_list_backup = std::vector<small_value_type>();
+		resize(2 * used_elements);
 	}
 }
 
