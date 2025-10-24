@@ -406,9 +406,14 @@ void hashl::filtering_finish(const hashl::small_value_type min, const hashl::sma
 	} else {
 		value_list.swap(value_list_backup);
 		for (hash_offset_type i(0); i < modulus; ++i) {
-			if (key_list[i] != invalid_key && (value_list_backup[i] < min || max < value_list_backup[i])) {
-				value_list[i] = 0;
-				--used_elements;
+			if (key_list[i] != invalid_key) {
+				// remove entries not present in the filter
+				if (!value_list_backup[i]) {
+					value_list[i] = 0;
+					--used_elements;
+				} else if (value_list_backup[i] < min || max < value_list_backup[i]) {
+					value_list[i] = invalid_value;
+				}
 			}
 		}
 		value_list_backup = std::vector<small_value_type>();

@@ -356,5 +356,6 @@ int main(const int argc, char * const * const argv) {
 	} else {
 		cross_ref_stdout(reference_kmers, fastq_kmers);
 	}
+	std::cerr << time(0) << ": done processing\n";
 	return 0;
 }

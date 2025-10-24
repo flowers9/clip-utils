@@ -20,6 +20,9 @@
 // take an existing hash, count hits against a library, and mark
 // kmers outside the given ranges as invalid
 
+// when used to keep the library counts (-l), kmers not present in the
+// library are removed from the output hash
+
 static bool opt_feedback;
 static int opt_library_counts;
 static int opt_max_kmer_frequency;

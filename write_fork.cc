@@ -168,14 +168,17 @@ int write_fork(const std::string &filename, const mode_t mode) {
 	std::string suffix;
 	get_suffix(filename, suffix);
 	std::list<std::string> args;
-	if (suffix == ".gz") {
+	if (suffix == ".zst") {
+		args.push_back("zstd");
+		args.push_back("-c");
+	} else if (suffix == ".xz" || suffix == ".lzma") {
+		args.push_back("xz");
+		args.push_back("-c");
+	} else if (suffix == ".gz" || suffix == ".Z") {
 		args.push_back("gzip");
 		args.push_back("-c");
 	} else if (suffix == ".bz2") {
 		args.push_back("bzip2");
-		args.push_back("-c");
-	} else if (suffix == ".Z") {
-		args.push_back("compress");
 		args.push_back("-c");
 	}
 	return write_fork(args, filename, mode);

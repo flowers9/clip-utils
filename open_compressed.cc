@@ -19,9 +19,10 @@
 // XXX - consider switching to popen instead of fork/exec
 
 #define BUFSIZE 32768
-#define BZIP2_COMMAND_DEFAULT "bzip2"
-#define GZIP_COMMAND_DEFAULT "gzip"
+#define ZSTD_COMMAND_DEFAULT "zstd"
 #define XZ_COMMAND_DEFAULT "xz"
+#define GZIP_COMMAND_DEFAULT "gzip"
+#define BZIP2_COMMAND_DEFAULT "bzip2"
 
 class OpenCompressedLocalData {
     private:
@@ -30,7 +31,7 @@ class OpenCompressedLocalData {
 	std::map<int, pid_t> m_open_processes;
 	// list of closed processes that need to be waited on
 	std::list<pid_t> m_closed_processes;
-	std::vector<std::string> m_gzip, m_bzip2, m_xz;
+	std::vector<std::string> m_gzip, m_bzip2, m_xz, m_zstd;
     private:
 	void finish_nohang(void) {
 		std::list<pid_t>::iterator a(m_closed_processes.begin());
@@ -54,7 +55,7 @@ class OpenCompressedLocalData {
 		m_already_closed_stdin(0),
 		m_open_processes(),
 		m_closed_processes(),
-		m_gzip(), m_bzip2(), m_xz(),
+		m_gzip(), m_bzip2(), m_xz(), m_zstd(),
 		open_max(sysconf(_SC_OPEN_MAX)),
 		buffers(new refcount_array<char>[open_max]),
 		buffer_start(new ssize_t[open_max]),
@@ -129,6 +130,7 @@ class OpenCompressedLocalData {
 		return m_already_closed_stdin;
 	}
 	// return array suitable to passing to execvp()
+	char **zstd_args(const std::string &);
 	char **gzip_args(const std::string &);
 	char **bzip2_args(const std::string &);
 	char **xz_args(const std::string &);
@@ -218,15 +220,43 @@ char **OpenCompressedLocalData::xz_args(const std::string &file) {
 	return m_xz_args;
 }
 
+char **OpenCompressedLocalData::zstd_args(const std::string &file) {
+	if (m_zstd.empty()) {
+		char * const env_cmd(getenv("ZSTD_COMMAND"));
+		breakup_line(env_cmd ? env_cmd : ZSTD_COMMAND_DEFAULT, m_zstd);
+		m_zstd.push_back("-d");		// an extra -d or -c doesn't hurt
+		m_zstd.push_back("-c");
+		m_zstd.push_back("-f");		// allow writing to stdout
+	}
+	m_zstd.push_back(file);
+	size_t n(0);
+	for (size_t i(0); i != m_zstd.size(); ++i) {
+		n += m_zstd[i].size() + 1;	// +1 for trailing null
+	}
+	// this would be a memory leak, but we only ever allocate
+	// it immediately before calling execvp()
+	char *m_zstd_string(new char[n]);
+	char **m_zstd_args(new char*[m_zstd.size() + 1]);
+	char *s(m_zstd_string);
+	for (size_t i(0); i != m_zstd.size(); ++i) {
+		memcpy(s, m_zstd[i].c_str(), m_zstd[i].size() + 1);
+		m_zstd_args[i] = s;
+		s += m_zstd[i].size() + 1;
+	}
+	m_zstd_args[m_zstd.size()] = 0;	// trailing null
+	m_zstd.pop_back();		// remove file
+	return m_zstd_args;
+}
+
 static OpenCompressedLocalData local;
 
 // simply return the suffix of the file name, if it matches one of the list
 
 void get_suffix(const std::string &filename, std::string &suffix) {
-	const char *suffix_list[4] = { ".gz", ".bz2", ".xz", ".Z" };
-	const size_t suffix_size[4] = { 3, 4, 3, 2 };
+	const char *suffix_list[6] = { ".gz", ".bz2", ".lzma", ".xz", ".Z", ".zst" };
+	const size_t suffix_size[6] = { 3, 4, 5, 3, 2, 4 };
 	suffix.clear();
-	for (int i(0); i != 4; ++i) {
+	for (int i(0); i != 6; ++i) {
 		const size_t &j(suffix_size[i]);
 		if (filename.size() > j && filename.compare(filename.size() - j, j, suffix_list[i]) == 0) {
 			suffix = suffix_list[i];
@@ -240,10 +270,10 @@ void get_suffix(const std::string &filename, std::string &suffix) {
 // suffix exists
 
 int find_suffix(std::string &filename, std::string &suffix) {
-	const char *suffix_list[4] = { ".gz", ".bz2", ".xz", ".Z" };
-	const size_t suffix_size[4] = { 3, 4, 3, 2 };
+	const char *suffix_list[6] = { ".gz", ".bz2", ".lzma", ".xz", ".Z", ".zst" };
+	const size_t suffix_size[6] = { 3, 4, 5, 3, 2, 4 };
 	suffix.clear();
-	for (int i(0); i != 4; ++i) {
+	for (int i(0); i != 6; ++i) {
 		const size_t &j(suffix_size[i]);
 		if (filename.size() > j && filename.compare(filename.size() - j, j, suffix_list[i]) == 0) {
 			suffix = suffix_list[i];
@@ -324,12 +354,16 @@ int open_compressed(const std::string &filename, bool force_uncompressed) {
 				close(i);
 			}
 			char **cmd;
-			if (suffix == ".bz2") {
-				cmd = local.bzip2_args(s);
-			} else if (suffix == ".xz") {
+			if (suffix == ".zst") {
+				cmd = local.zstd_args(s);
+			} else if (suffix == ".xz" || suffix == ".lzma") {
 				cmd = local.xz_args(s);
-			} else {
+			} else if (suffix == ".gz" || suffix == ".Z") {
 				cmd = local.gzip_args(s);
+			} else if (suffix == ".bz2") {
+				cmd = local.bzip2_args(s);
+			} else {
+				_exit(1);
 			}
 			if (execvp(cmd[0], cmd) == -1) {
 				std::cerr << "Error: execvp " << cmd[0] << ": " << strerror(errno) << '\n';
