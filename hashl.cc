@@ -271,8 +271,8 @@ void hashl::purge_invalid_values() {
 	resize(2 * used_elements);
 }
 
-// add in new hash: any values <min_cutoff ignored, <=max_cutoff increment existing value,
-// values of >max_cutoff set to invalid_value
+// add in new hash: any values <min_cutoff ignored, <=max_cutoff increment
+// existing value by 1, values of >max_cutoff set to invalid_value
 
 bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_value_type max_cutoff) {
 	// total possible elements, actually, as there may be duplicates
@@ -290,14 +290,13 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 	// loop over incoming hash and increment or invalidate entries as needed
 	key_type key(a.bits(), a.words()), comp_key(a.bits(), a.words());
 	for (size_type i(0); i < a.modulus; ++i) {
-		if (a.key_list[i] != invalid_key) {
+		if (a.key_list[i] != invalid_key && a.value_list[i] >= min_cutoff) {
 			key.copy_in(a.data, a.key_list[i]);
 			comp_key.make_complement(key);
 			const hash_offset_type new_i(insert_offset(key, comp_key, a.key_list[i] + offset));
 			if (new_i == modulus) {		// ran out of memory in hash (shouldn't happen)
 				return 0;
-			} else if (a.value_list[i] < min_cutoff) {	// ignore low values
-			} else if (a.value_list[i] > max_cutoff) {	// too high - invalid
+			} else if (a.value_list[i] > max_cutoff) {	// too high - invalid (also catches invalid_value)
 				value_list[new_i] = invalid_value;
 			} else if (value_list[new_i] < max_small_value) {
 				++value_list[new_i];
@@ -309,7 +308,7 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 	if (!metadata.empty() && !a.metadata.empty()) {
 		// extract metadata from blobs (both ours and a's)
 		our_md.unpack(metadata);
-		const size_type padding(offset - our_md.sequence_length());
+		const size_type padding(offset / 2 - our_md.sequence_length());
 		a_md.unpack(a.metadata);
 		our_md.add(a_md, padding);
 		our_md.pack(metadata);
@@ -318,19 +317,19 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 			// add dummy entry for current hash
 			our_md.add_filename("unknown");
 			our_md.add_readname("padding");
-			our_md.add_read_range(0, offset);
+			our_md.add_read_range(0, offset / 2);
 		}
 		a_md.unpack(a.metadata);
 		our_md.add(a_md);
 		our_md.pack(metadata);
 	} else if (!metadata.empty() && !a.data.empty()) {	// pad a's, then add to ours
 		our_md.unpack(metadata);
-		const size_type padding(offset - our_md.sequence_length());
+		const size_type padding(offset / 2 - our_md.sequence_length());
 		// add dummy entry for a
 		const size_type a_offset(a.data.size() * sizeof(base_type) * 8);
 		a_md.add_filename("unknown");
 		a_md.add_readname("padding");
-		a_md.add_read_range(0, a_offset);
+		a_md.add_read_range(0, a_offset / 2);
 		our_md.add(a_md, padding);
 		our_md.pack(metadata);
 	}
