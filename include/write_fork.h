@@ -9,6 +9,8 @@
 extern int write_fork(const std::list<std::string> &, const std::string &, mode_t = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 // this version tries to guess the arguments from the file ending
 extern int write_fork(const std::string &, mode_t = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+// or just get the guessed arguments yourself
+std::list<std::string> get_write_fork_args(const std::string &);
 extern void close_fork(int);
 extern void close_fork_wait(int);
 extern ssize_t pfputc(int, char);

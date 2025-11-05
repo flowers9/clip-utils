@@ -33,23 +33,7 @@ static unsigned long opt_frequency_max;
 static unsigned long opt_frequency_min;
 
 static void save_memory(const hash &mer_list) {
-	std::string suffix;
-	get_suffix(opt_save_file, suffix);
-	std::list<std::string> args;
-	if (suffix == ".gz") {
-		args.push_back("gzip");
-		args.push_back("-c");
-	} else if (suffix == ".bz2") {
-		args.push_back("bzip2");
-		args.push_back("-c");
-	} else if (suffix == ".Z") {
-		args.push_back("compress");
-		args.push_back("-c");
-	} else if (suffix == ".xz") {
-		args.push_back("xz");
-		args.push_back("-c");
-	}
-	const int fd(write_fork(args, opt_save_file));
+	const int fd = write_fork(opt_save_file);
 	if (fd == -1) {
 		fprintf(stderr, "Error: could not save memory\n");
 		exit(1);

@@ -1,15 +1,16 @@
 #include "hashl.h"
-#include "hashl_less.h"	// hashl_less<>
 #include "hashl_index.h"	// hashl_index
+#include "hashl_less.h"	// hashl_less<>
 #include "hashl_metadata.h"	// hashl_metadata
 #include "itoa.h"	// itoa()
 #include "local_endian.h"	// big_endian
 #include "next_prime.h"	// next_prime()
 #include "open_compressed.h"	// pfread()
 #include "write_fork.h"	// pfwrite()
-#include <algorithm>	// sort(), swap()
+#include <algorithm>	// lower_bound(), sort(), swap()
 #include <iomanip>	// setw()
 #include <iostream>	// cerr, cout
+#include <iterator>	// distance()
 #include <map>		// map<>
 #include <stdint.h>	// uint64_t
 #include <stdlib.h>	// exit()
@@ -338,34 +339,77 @@ bool hashl::add(const hashl &a, const small_value_type min_cutoff, const small_v
 
 // for debugging
 
-void hashl::print(void) const {
+void hashl::print(const int flags) const {
 	int max_offset_width(1), max_key_width(1);
 	for (size_type i(10); i < modulus; i *= 10, ++max_offset_width) { }
 	for (size_type i(10); i < data.size() * sizeof(base_type) * 8; i *= 10, ++max_key_width) { }
-	std::cout << "modulus: " << modulus << "\n"
-		<< "collision modulus: " << collision_modulus << "\n"
-		<< "used elements: " << used_elements << "\n"
-		<< "bit width: " << bit_width << "\n"
-		<< "metadata size: " << metadata.size() << "\n"
-		<< "data size: " << data.size() * sizeof(base_type) << "\n"
-		<< "offset/value/key pairs:\n";
+	if (flags & print_hash_header) {
+		std::cout << "modulus: " << modulus << "\n"
+			<< "collision modulus: " << collision_modulus << "\n"
+			<< "used elements: " << used_elements << "\n"
+			<< "bit width: " << bit_width << "\n"
+			<< "metadata size: " << metadata.size() << "\n"
+			<< "data size: " << data.size() * sizeof(base_type) << "\n"
+			<< "offset/value/key pairs:\n";
+	}
+	if (!(flags & (print_hash_index | print_data_offset | print_value | print_keys))) {
+		return;		// nothing left to print
+	}
 	std::string s;
 	key_type k(bit_width, word_width);
 	for (hash_offset_type i(0); i < modulus; ++i) {
 		if (key_list[i] != invalid_key) {
 			k.copy_in(data, key_list[i]);
 			k.get_sequence(s);
-			std::cout << std::setw(max_offset_width) << i << ' ' << std::setw(max_key_width) << key_list[i] << ' ' << std::setw(3) << static_cast<unsigned int>(value_list[i]) << ' ' << s << "\n";
+			if (flags & print_hash_index) {
+				std::cout << std::setw(max_offset_width) << i << ' ';
+			}
+			if (flags & print_data_offset) {
+				std::cout << std::setw(max_key_width) << key_list[i] << ' ';
+			}
+			if (flags & print_value) {
+				std::cout << std::setw(3) << static_cast<unsigned int>(value_list[i]) << ' ';
+			}
+			if (flags & print_keys) {
+				std::cout << s;
+			}
+			std::cout << '\n';
 		}
 	}
 }
 
-void hashl::get_sequence(const size_type start, const size_type length, std::string &seq) const {
+void hashl::print_sequence(const size_type start, size_type length) const {
+	if (start > data.size() * sizeof(base_type) * 8) {
+		return;
+	} else if (length > data.size() * sizeof(base_type) * 8 - start) {
+		length = data.size() * sizeof(base_type) * 8 - start;
+	}
 	const char values[4] = { 'A', 'C', 'G', 'T' };
+	size_type word_offset = start / (sizeof(base_type) * 8);
+	size_type bit_offset = sizeof(base_type) * 8 - start % (sizeof(base_type) * 8);
+	for (size_type i = 0; i < length; i += 2) {
+		if (bit_offset) {
+			bit_offset -= 2;
+		} else {
+			bit_offset = sizeof(base_type) * 8 - 2;
+			++word_offset;
+		}
+		std::cout << static_cast<char>(values[(data[word_offset] >> bit_offset) & 3]);
+	}
+	std::cout << '\n';
+}
+
+void hashl::get_sequence(const size_type start, size_type length, std::string &seq) const {
 	seq.clear();
-	size_type word_offset(start / (sizeof(base_type) * 8));
-	size_type bit_offset(sizeof(base_type) * 8 - start % (sizeof(base_type) * 8));
-	for (size_type i(0); i < length; i += 2) {
+	if (start > data.size() * sizeof(base_type) * 8) {
+		return;
+	} else if (length > data.size() * sizeof(base_type) * 8 - start) {
+		length = data.size() * sizeof(base_type) * 8 - start;
+	}
+	const char values[4] = { 'A', 'C', 'G', 'T' };
+	size_type word_offset = start / (sizeof(base_type) * 8);
+	size_type bit_offset = sizeof(base_type) * 8 - start % (sizeof(base_type) * 8);
+	for (size_type i = 0; i < length; i += 2) {
 		if (bit_offset) {
 			bit_offset -= 2;
 		} else {
@@ -461,4 +505,134 @@ void hashl::save_index(const int fd) {
 	collision_modulus = 0;
 	bit_width = 0;
 	word_width = 0;
+}
+
+// remove data that is not referenced in the hash, and update hash references to match
+void hashl::squash_data() {
+	// generate ranges
+	std::vector<std::pair<size_type, size_type> > offsets;	// key_list[second] = first
+	for (size_type i = 0; i < key_list.size(); ++i) {
+		offsets.push_back(std::make_pair(key_list[i], i));
+	}
+	std::sort(offsets.begin(), offsets.end());
+	// make list of used ranges (the ones we'll keep)
+	const auto effective_end = std::lower_bound(offsets.begin(), offsets.end(), std::make_pair<size_type, size_type>(invalid_key, 0));
+	offsets.resize(std::distance(offsets.begin(), effective_end));
+	std::vector<std::pair<size_type, size_type> > ranges;			// (start, stop)
+	ranges.push_back(std::make_pair(offsets.front().first, offsets.front().first + bit_width));
+	for (const auto &a : offsets) {
+		if (ranges.back().second >= a.first) {
+			ranges.back().second = a.first + bit_width;
+		} else {
+			ranges.push_back(std::make_pair(a.first, a.first + bit_width));
+		}
+	}
+	// update hash references
+	size_type j = 0, offset = ranges[0].first;
+	for (const auto &a : offsets) {
+		if (a.first > ranges[j].second) {
+			offset += ranges[j + 1].first - ranges[j].second;
+			++j;
+		}
+		key_list[a.second] -= offset;
+	}
+	offsets = std::vector<std::pair<size_type, size_type> >();
+	// move kept data sections into place
+	const size_type base_type_bits = sizeof(base_type) * 8;
+	size_type current_offset = 0, current_bit = 0;
+	// note: one lookout here is preserving data[current_offset]
+	// on the tail end of copying in case the next range uses it
+	for (const auto &a : ranges) {
+		size_type i = a.first / base_type_bits;
+		const size_type starting_bit = a.first % base_type_bits;
+		size_type end_i = a.second / base_type_bits;
+		const size_type ending_bit = a.second % base_type_bits;
+		// the bits we're keeping from the head of data[current_offset]
+		const base_type start_mask = current_bit ? static_cast<base_type>(-1) << (base_type_bits - current_bit) : 0;
+		if (i == end_i) {	// handle small kmers
+			const size_type width = ending_bit - starting_bit;
+			// doesn't cross a base_type boundary
+			if (current_bit + width <= base_type_bits) {
+				const base_type mask = (static_cast<base_type>(-1) << (base_type_bits - width)) >> current_bit;
+				if (current_bit > starting_bit) {
+					data[current_offset] = (data[current_offset] & ~mask) | ((data[i] >> (current_bit - starting_bit)) & mask);
+				} else {
+					data[current_offset] = (data[current_offset] & ~mask) | ((data[i] << (starting_bit - current_bit)) & mask);
+				}
+			} else {
+				data[current_offset] = (data[current_offset] & start_mask) | ((data[i] >> (current_bit - starting_bit)) & ~start_mask);
+				++current_offset;
+				const base_type end_mask = static_cast<base_type>(-1) << current_bit;
+				data[current_offset] = ((data[i] << (starting_bit + base_type_bits - current_bit)) & end_mask) | (data[current_offset] & ~end_mask);
+			}
+			current_bit = (current_bit + width) % base_type_bits;
+		} else if (starting_bit == current_bit) {
+			data[current_offset] = (data[current_offset] & start_mask) | (data[i] & ~start_mask);
+			for (++i, ++current_offset; i < end_i; ++i, ++current_offset) {
+				data[current_offset] = data[i];
+			}
+			if (ending_bit) {
+				const base_type end_mask = static_cast<base_type>(-1) << (base_type_bits - ending_bit);
+				data[current_offset] = (data[i] & end_mask) | (data[current_offset] & ~end_mask);
+			}
+			current_bit = ending_bit;
+		} else if (starting_bit < current_bit) {
+			const size_type shift_right = current_bit - starting_bit;
+			const size_type shift_left = base_type_bits - shift_right;
+			size_type final_bits = ending_bit + shift_right;
+			if (final_bits < base_type_bits) {
+				--end_i;
+			} else {
+				final_bits -= base_type_bits;
+			}
+			data[current_offset] = (data[current_offset] & start_mask) | ((data[i] >> shift_right) & ~start_mask);
+			for (++current_offset; i < end_i; ++i, ++current_offset) {
+				data[current_offset] = (data[i] << shift_left) | (data[i + 1] >> shift_right);
+			}
+			if (final_bits) {
+				const base_type end_mask = static_cast<base_type>(-1) << (base_type_bits - final_bits);
+				data[current_offset] = ((data[i] << shift_left) & end_mask) | (data[current_offset] & ~end_mask);
+			}
+			current_bit = final_bits;
+		} else {	// starting_bit > current_bit
+			const size_type shift_left = starting_bit - current_bit;
+			const size_type shift_right = base_type_bits - shift_left;
+			size_type final_bits;
+			if (ending_bit < shift_left) {
+				final_bits = base_type_bits + ending_bit - shift_left;
+				--end_i;
+			} else {
+				final_bits = ending_bit - shift_left;
+			}
+			data[current_offset] = (data[current_offset] & start_mask) | (((data[i] << shift_left) | (data[i + 1] >> shift_right)) & ~start_mask);
+			for (++i, ++current_offset; i < end_i; ++i, ++current_offset) {
+				data[current_offset] = (data[i] << shift_left) | (data[i + 1] >> shift_right);
+			}
+			if (ending_bit < shift_left) {
+				const base_type end_mask = static_cast<base_type>(-1) << (base_type_bits - final_bits);
+				data[current_offset] = (((data[i] << shift_left) | (data[i + 1] >> shift_right)) & end_mask) | (data[current_offset] & ~end_mask);
+			} else if (final_bits) {
+				const base_type end_mask = static_cast<base_type>(-1) << (base_type_bits - final_bits);
+				data[current_offset] = ((data[i] << shift_left) & end_mask) | (data[current_offset] & ~end_mask);
+			}
+			current_bit = final_bits;
+		}
+	}
+	// zero out leftover data
+	if (current_bit) {
+		const base_type mask = static_cast<base_type>(-1) << (base_type_bits - current_bit);
+		data[current_offset] &= mask;
+		++current_offset;
+	}
+	data.resize(current_offset);
+	// convert ranges from bit positions to basepair positions
+	for (auto &a : ranges) {
+		a.first /= 2;
+		a.second /= 2;
+	}
+	// update metadata
+	hashl_metadata md;
+	md.unpack(metadata);
+	md.update_ranges(ranges);
+	md.pack(metadata);
 }

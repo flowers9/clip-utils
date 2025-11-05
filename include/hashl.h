@@ -206,16 +206,20 @@ class hashl {
 	void get_sequence(size_type start, size_type length, std::string &) const;
 	void resize(hash_offset_type new_size);
 	void purge_invalid_values();
+	void squash_data();
 	// add in new hashl - add new data, add or modify values
 	// (<min_cutoff => ignored, <=cutoff => ++, >cutoff => invalid)
 	bool add(const hashl &, small_value_type min_cutoff = 0, small_value_type max_cutoff = 1);
-	void print() const;
 	// save and zero value_list
 	void filtering_prep(bool backup_values = 1);
 	// restore value_list for values in min-max, set to invalid_value for rest
 	void filtering_finish(small_value_type min, small_value_type max);
 	// after saving, this resets hash to pre-initted state
 	void save_index(int);
+    public:
+	enum { print_hash_header = 1, print_hash_index = 2, print_data_offset = 4, print_value = 8, print_keys = 16 };
+	void print(int flags = 31) const;
+	void print_sequence(size_type start = 0, size_type length = -1) const;
 };
 
 #endif // !_HASHL_H

@@ -163,8 +163,8 @@ int write_fork(const std::list<std::string> &args, const std::string &filename, 
 	return fd;
 }
 
-// try and guess if we should pipe this through a compressor
-int write_fork(const std::string &filename, const mode_t mode) {
+// guess compression args (if any) from filename
+std::list<std::string> get_write_fork_args(const std::string &filename) {
 	std::string suffix;
 	get_suffix(filename, suffix);
 	std::list<std::string> args;
@@ -181,7 +181,12 @@ int write_fork(const std::string &filename, const mode_t mode) {
 		args.push_back("bzip2");
 		args.push_back("-c");
 	}
-	return write_fork(args, filename, mode);
+	return args;
+}
+
+// try and guess if we should pipe this through a compressor
+int write_fork(const std::string &filename, const mode_t mode) {
+	return write_fork(get_write_fork_args(filename), filename, mode);
 }
 
 // close the file and wait on the forked process

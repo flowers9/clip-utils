@@ -157,23 +157,7 @@ static void get_opts(const int argc, char * const * const argv) {
 }
 
 static void save_hash(const hashl &mer_list, const std::string &filename) {
-	std::string suffix;
-	get_suffix(filename, suffix);
-	std::list<std::string> args;
-	if (suffix == ".gz") {
-		args.push_back("gzip");
-		args.push_back("-c");
-	} else if (suffix == ".bz2") {
-		args.push_back("bzip2");
-		args.push_back("-c");
-	} else if (suffix == ".xz") {
-		args.push_back("xz");
-		args.push_back("-c");
-	} else if (suffix == ".Z") {
-		args.push_back("compress");
-		args.push_back("-c");
-	}
-	const int fd(write_fork(args, filename));
+	const int fd = write_fork(filename);
 	if (fd == -1) {
 		std::cerr << "Error: could not save hash " << filename << '\n';
 		exit(1);

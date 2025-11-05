@@ -3,7 +3,7 @@
 #include "open_compressed.h"	// close_compressed(), get_suffix(), open_compressed()
 #include "time_used.h"	// elapsed_time(), start_time()
 #include "version.h"	// VERSION
-#include "write_fork.h"	// close_fork(), write_fork()
+#include "write_fork.h"	// close_fork(), get_write_fork_args(), write_fork()
 #include <errno.h>	// errno
 #include <getopt.h>	// getopt(), optarg, optind
 #include <iomanip>	// fixed, setprecision()
@@ -24,6 +24,8 @@
 // library are removed from the output hash
 
 static bool opt_feedback;
+static bool opt_purge_hash;
+static bool opt_squash_hash;
 static int opt_library_counts;
 static int opt_max_kmer_frequency;
 static int opt_min_kmer_frequency;
@@ -40,6 +42,8 @@ static void print_usage() {
 		"    -l    replace the hash values (reference counts) with the library counts\n"
 		"          (requires the -o option)\n"
 		"    -o ## output file for resulting hash [overwrite original hash]\n"
+		"    -p    purge hash data before saving\n"
+		"    -P    squash hash data before saving\n"
 		"    -q    don't print status updates\n"
 		"    -V    print version\n";
 	exit(1);
@@ -50,8 +54,10 @@ static void get_opts(const int argc, char * const * const argv) {
 	opt_library_counts = 0;
 	opt_max_kmer_frequency = hashl::max_small_value;
 	opt_min_kmer_frequency = 1;
+	opt_purge_hash = 0;
+	opt_squash_hash = 0;
 	int c;
-	while ((c = getopt(argc, argv, "hf:F:lo:qV")) != EOF) {
+	while ((c = getopt(argc, argv, "hf:F:lo:pPqV")) != EOF) {
 		switch (c) {
 		    case 'h':
 			print_usage();
@@ -67,6 +73,12 @@ static void get_opts(const int argc, char * const * const argv) {
 			break;
 		    case 'o':
 			opt_output_hash = optarg;
+			break;
+		    case 'p':
+			opt_purge_hash = 1;
+			break;
+		    case 'P':
+			opt_squash_hash = 1;
 			break;
 		    case 'q':
 			opt_feedback = 0;
@@ -103,24 +115,8 @@ static void get_opts(const int argc, char * const * const argv) {
 }
 
 static void save_hash(const hashl &mer_list, const std::string &filename) {
-	const std::string tmp(filename + ".tmp");
-	std::string suffix;
-	get_suffix(filename, suffix);
-	std::list<std::string> args;
-	if (suffix == ".gz") {
-		args.push_back("gzip");
-		args.push_back("-c");
-	} else if (suffix == ".bz2") {
-		args.push_back("bzip2");
-		args.push_back("-c");
-	} else if (suffix == ".xz") {
-		args.push_back("xz");
-		args.push_back("-c");
-	} else if (suffix == ".Z") {
-		args.push_back("compress");
-		args.push_back("-c");
-	}
-	const int fd(write_fork(args, tmp));
+	const std::string tmp = filename + ".tmp";
+	const int fd = write_fork(get_write_fork_args(filename), tmp);
 	if (fd == -1) {
 		std::cerr << "Error: could not save hash " << filename << '\n';
 		exit(1);
@@ -249,7 +245,7 @@ int main(const int argc, char * const * const argv) {
 	get_opts(argc, argv);
 	// load reference hash
 	hashl reference_kmers;
-	const int fd(open_compressed(argv[optind]));
+	const int fd = open_compressed(argv[optind]);
 	if (fd == -1) {
 		std::cerr << "Error: open: " << argv[optind] << '\n';
 		return 1;
@@ -259,12 +255,25 @@ int main(const int argc, char * const * const argv) {
 	}
 	reference_kmers.init_from_file(fd);
 	close_compressed(fd);
+	// !opt_library_counts == keep original reference counts
 	reference_kmers.filtering_prep(!opt_library_counts);
 	opt_mer_length = reference_kmers.bits() / 2;
-	for (int i(optind + 1); i < argc; ++i) {
+	for (int i = optind + 1; i < argc; ++i) {
 		process_library(reference_kmers, argv[i]);
 	}
 	reference_kmers.filtering_finish(opt_min_kmer_frequency, opt_max_kmer_frequency);
+	if (opt_purge_hash) {
+		if (opt_feedback) {
+			std::cerr << time(0) << ": purging reference hash\n";
+		}
+		reference_kmers.purge_invalid_values();
+	}
+	if (opt_squash_hash) {
+		if (opt_feedback) {
+			std::cerr << time(0) << ": squashing reference hash\n";
+		}
+		reference_kmers.squash_data();
+	}
 	if (opt_feedback) {
 		std::cerr << time(0) << ": saving reference hash\n";
 	}
