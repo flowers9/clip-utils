@@ -516,12 +516,15 @@ void hashl::squash_data() {
 	}
 	std::sort(offsets.begin(), offsets.end());
 	// make list of used ranges (the ones we'll keep)
+	// each extra range incurs a 2 size_type overhead - if it's not
+	// saving at least that many bits of sequence, don't bother to split
+	const size_type tradeoff = 2 * sizeof(size_type) * 8;
 	const auto effective_end = std::lower_bound(offsets.begin(), offsets.end(), std::make_pair<size_type, size_type>(invalid_key, 0));
 	offsets.resize(std::distance(offsets.begin(), effective_end));
 	std::vector<std::pair<size_type, size_type> > ranges;			// (start, stop)
 	ranges.push_back(std::make_pair(offsets.front().first, offsets.front().first + bit_width));
 	for (const auto &a : offsets) {
-		if (ranges.back().second >= a.first) {
+		if (ranges.back().second + tradeoff > a.first) {
 			ranges.back().second = a.first + bit_width;
 		} else {
 			ranges.push_back(std::make_pair(a.first, a.first + bit_width));
