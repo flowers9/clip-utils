@@ -195,7 +195,7 @@ static void print_mer_histogram(const hashl &mer_list) {
 	for (; c != end_c; ++c) {
 		const double x(double(100) * c->second);
 		i += x;
-		std::cout << c->first << ' ' << c->second << ' ' << x / total << ' ' << i / total << "\n";
+		std::cout << static_cast<unsigned int>(c->first) << ' ' << c->second << ' ' << x / total << ' ' << i / total << "\n";
 	}
 }
 
