@@ -37,6 +37,7 @@ class hashn {
 	typedef unsigned long value_type;
 	typedef unsigned long offset_type;
 	typedef uint64_t base_type;
+	typedef std::string::size_type size_type;
 	enum { max_small_value = UCHAR_MAX };
 	enum no_space_response_t { CLEAN_HASH = 1, TMP_FILE = 2 };
 
@@ -325,6 +326,9 @@ class hashn {
 	}
 	void save(int) const;
 	void set_no_space_response(int, const std::string & = "NONE");
+    public:
+	enum { print_hash_header = 1, print_hash_index = 2, print_data_offset = 4, print_value = 8, print_key = 16 };
+	void print(int flags = 31) const;
 };
 
 #endif // !_HASHN_H

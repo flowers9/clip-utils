@@ -352,7 +352,7 @@ void hashl::print(const int flags) const {
 			<< "data size: " << data.size() * sizeof(base_type) << "\n"
 			<< "offset/value/key pairs:\n";
 	}
-	if (!(flags & (print_hash_index | print_data_offset | print_value | print_keys))) {
+	if (!(flags & (print_hash_index | print_data_offset | print_value | print_key))) {
 		return;		// nothing left to print
 	}
 	std::string s;
@@ -370,7 +370,7 @@ void hashl::print(const int flags) const {
 			if (flags & print_value) {
 				std::cout << std::setw(3) << static_cast<unsigned int>(value_list[i]) << ' ';
 			}
-			if (flags & print_keys) {
+			if (flags & print_key) {
 				std::cout << s;
 			}
 			std::cout << '\n';

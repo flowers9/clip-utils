@@ -1,4 +1,5 @@
 #include "hashn.h"
+#include "hist_lib_hashn.h"	// convert_key()
 #include "itoa.h"	// itoa()
 #include "local_endian.h"	// big_endian
 #include "next_prime.h"	// next_prime()
@@ -6,6 +7,8 @@
 #include "write_fork.h"	// close_fork(), close_fork_wait(), pfwrite(), write_fork()
 #include <algorithm>	// swap()
 #include <cassert>	// assert()
+#include <iomanip>	// setw()
+#include <iostream>	// cout
 #include <list>		// list<>
 #include <map>		// map<>
 #include <new>		// new
@@ -524,11 +527,11 @@ hashn::const_iterator hashn::begin() {
 // issues, string is padded to full word_width
 
 std::string hashn::key_type_base::string() const {
-	const int n(word_width * sizeof(base_type));
+	const int n = word_width * sizeof(base_type);
 	std::string s(n, 0);	// 0 values are valid inside a std::string
 	// can't make this a static_cast<>
-	const char * const t((char *)k);
-	for (int i(0); i != n; ++i) {
+	const char * const t = (char *)k;
+	for (int i = 0; i != n; ++i) {
 		s[i] = t[i];
 	}
 	return s;
@@ -991,4 +994,35 @@ void hashn::prep_for_readback(offset_type &offset, std::map<sort_key, std::pair<
 	}
 	// by here, next_keys will have a key-sorted list of exactly
 	// one key per file
+}
+
+void hashn::print(const int flags) const {
+	int max_offset_width = 1;
+	for (size_type i = 10; i < modulus; i *= 10, ++max_offset_width) { }
+	if (flags & print_hash_header) {
+		std::cout << "modulus: " << modulus << "\n"
+			<< "collision modulus: " << collision_modulus << "\n"
+			<< "used elements: " << used_elements << "\n"
+			<< "bit width: " << bit_width << "\n"
+			<< "offset/value/key pairs:\n";
+	}
+	if (!(flags & (print_hash_index | print_value | print_key))) {
+		return;			// nothing left to print
+	}
+	base_type *k = key_list;
+	for (offset_type i = 0; i < modulus; ++i, k += word_width) {
+		if (!invalid_key.equal(k)) {
+			const key_type_internal tmp_key(*this, k);
+			if (flags & print_hash_index) {
+				std::cout << std::setw(max_offset_width) << i << ' ';
+			}
+			if (flags & print_value) {
+				std::cout << std::setw(3) << static_cast<unsigned int>(value_list[i]) << ' ';
+			}
+			if (flags & print_key) {
+				std::cout << convert_key(tmp_key);
+			}
+			std::cout << '\n';
+		}
+	}
 }

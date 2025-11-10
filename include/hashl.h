@@ -217,7 +217,7 @@ class hashl {
 	// after saving, this resets hash to pre-initted state
 	void save_index(int);
     public:
-	enum { print_hash_header = 1, print_hash_index = 2, print_data_offset = 4, print_value = 8, print_keys = 16 };
+	enum { print_hash_header = 1, print_hash_index = 2, print_data_offset = 4, print_value = 8, print_key = 16 };
 	void print(int flags = 31) const;
 	void print_sequence(size_type start = 0, size_type length = -1) const;
 };
